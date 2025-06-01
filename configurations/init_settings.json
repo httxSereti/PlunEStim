@@ -1,0 +1,26 @@
+{
+  "UNIT3": {
+    "level_h": true,
+    "mode": 1,
+    "adj_1": 40,
+    "adj_2": 50,
+    "adj_3": 0,
+    "adj_4": 0
+  },
+  "UNIT2": {
+    "level_h": false,
+    "mode": 1,
+    "adj_1": 65,
+    "adj_2": 20,
+    "adj_3": 0,
+    "adj_4": 0
+  },
+  "UNIT1": {
+    "level_h": false,
+    "mode": 1,
+    "adj_1": 45,
+    "adj_2": 40,
+    "adj_3": 0,
+    "adj_4": 0
+  }
+}

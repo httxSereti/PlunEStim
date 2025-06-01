@@ -1,0 +1,37 @@
+{
+"vote": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "60",
+    "wait": true
+  },
+  "vote_sub": {
+    "type": "multi",
+    "target": "all",
+    "prct": -3,
+    "rnd": true
+  },
+  "pilloryvote": {
+    "type": "pro",
+    "profile": "E",
+    "level": 100,
+    "duration": "60",
+    "wait": true
+  },
+  "position": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "30",
+    "wait": true
+  },
+  "sound": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "20",
+    "wait": true
+  }
+}

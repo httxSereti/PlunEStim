@@ -1,0 +1,50 @@
+{
+  "vote": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "60",
+    "wait": true
+  },
+  "vote_sub": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "120",
+    "wait": true
+  },
+  "pilloryvote": {
+    "type": "lvl",
+    "unit": "123",
+    "dest": "AB",
+    "level": "%+10",
+    "duration": "30",
+    "wait": false
+  },
+  "move": {
+    "type": "lvl",
+    "unit": "123",
+    "dest": "AB",
+    "level": "%+10",
+    "duration": "10",
+    "wait": false
+  },
+  "position": {
+    "type": "lvl",
+    "unit": "123",
+    "dest": "AB",
+    "level": "%+10",
+    "duration": "10",
+    "wait": false
+  },
+  "sound": {
+    "type": "lvl",
+    "unit": "123",
+    "dest": "AB",
+    "level": "%+10",
+    "duration": "10",
+    "wait": false
+  }
+}

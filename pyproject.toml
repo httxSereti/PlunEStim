@@ -1,0 +1,35 @@
+[project]
+name = "pes-bot"
+version = "1.0.1"
+description = "Discord Bot to manage your EStim devices and sessions."
+authors = [
+    {name = "graviky"},
+    {name = "deLulu"}
+]
+requires-python = "3.12.6"
+
+
+[tool.poetry]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "3.12.6"
+nextcord = "3.1.0"
+pyttsx3 = "*"
+python-dotenv = "*"
+plotly = "*"
+requests = "*"
+pybluez = { git = "git+https://github.com/pybluez/pybluez.git" }
+bleak = "*"
+pyserial = "*"
+discord-handler = "*"
+poetryup = "*"
+kaleido = "0.2.1"
+discord-webhook = "*"
+playsound3 = "^3.2.3"
+supabase = "^2.15.1"
+realtime = "^2.4.3"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

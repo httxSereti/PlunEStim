@@ -1,0 +1,44 @@
+{
+  "vote": {
+    "type": "pro",
+    "profile": "A",
+    "level": 100,
+    "duration": "60",
+    "wait": true
+  },
+  "vote_sub": {
+    "type": "pro",
+    "profile": "D",
+    "level": 100,
+    "duration": "60",
+    "wait": true
+  },
+  "pilloryvote": {
+    "type": "pro",
+    "profile": "E",
+    "level": 100,
+    "duration": "70",
+    "wait": true
+  },
+  "move": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "30",
+    "wait": true
+  },
+  "position": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "30",
+    "wait": true
+  },
+  "sound": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "20",
+    "wait": true
+  }
+}
