@@ -104,10 +104,15 @@ class SecurityCommands(Cog):
     async def remove(
         self,
         interaction: nextcord.Interaction,
-        member: nextcord.Member = SlashOption(name="user", description="The User you want to remove from Administrators.", required=True),
+        user: str = SlashOption(
+            name="user",
+            description="User to remove from Administrators",
+        ),
     ):
+        userId: int = int(user)
+        
         if await check_permission(interaction, "administrator"):
-            if member.id not in self.bot.administrators:
+            if userId not in self.bot.administrators:
                 await interaction.response.send_message(embed=SecurityEmbedError(
                     interaction.user.id,
                     "Command",
@@ -116,8 +121,19 @@ class SecurityCommands(Cog):
                 
                 return 
             
-            self.bot.administrators.remove(member.id)
-            await interaction.response.send_message(f"{interaction.user} just removed {member.mention} from Administrators.")
+            self.bot.administrators.remove(userId)
+            await interaction.response.send_message(f"{interaction.user} just removed <@{userId}> from Administrators.")
+            
+    @remove.on_autocomplete("user")
+    async def remove_autocomplete(self, interaction: Interaction, user: str):
+        admins: dict = {}
+        
+        for adminId in self.bot.administrators:
+            user: nextcord.User = self.bot.get_user(adminId)
+            choiceName = "{} ({})".format(user.display_name, user.name)
+            admins[choiceName] = str(adminId)
+
+        await interaction.response.send_autocomplete(admins)
 
 def setup(bot):
     bot.add_cog(SecurityCommands(bot))
