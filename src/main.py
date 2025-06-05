@@ -764,13 +764,14 @@ class Bot2b3(NextcordBot):
         
         self.chaster: Chaster = Chaster()
         
-        
+        # Queue        
+        self.queueRunning = True  # Queue status.
         self.action_queue = []  # async actions for estim config
         self.back_action_queue = []  # async back actions for estim config
+        
         self.update_graph_status = 0  # update the image of all units status
         self.BOT_HELP_CMD = {'help': ''}  # help structure
         self.previous_2B_sync = False  # previous global 2B sync
-        self.queuing_pause = False  # stop the management of new action
         
         self.chaster_lockid = None  # id of the current chaster lock
         self.chaster_taskid = None  # id of the task extension
@@ -1166,47 +1167,6 @@ class Bot2b3(NextcordBot):
                     "wait": bool(wait_arg)
                 }
             await interaction.response.send_message('event {} modified'.format(event_arg))
-            return None
-
-        @self.slash_command(name='queuing',
-                            description='Event queuing management')
-        async def bot_queuing(interaction: Interaction, action: str = SlashOption(
-                name="action",
-                description="action about event queue",
-                required=True,
-                choices=['resume', 'pause', 'list', 'purge']
-            )
-        ) -> None:
-            if action == 'list':
-                list_action = ['-- waiting events --']
-                nb = 0
-                for idx in range(len(self.action_queue)):
-                    if self.action_queue[idx]['counter'] == -1:
-                        nb = nb + 1
-                        list_action.append(self.action_queue[idx]['origine'])
-                list_action.append("  {} event waiting in queue".format(nb))
-                await interaction.response.send_message("\n".join(list_action))
-                return None
-
-            # need more permission for others commands
-            if await check_permission(interaction, 'administrator'):
-                if action == 'purge':
-                    for idx in range(len(self.action_queue)):
-                        if self.action_queue[idx]['counter'] == -1:
-                            self.action_queue[idx]['counter'] = self.action_queue[idx]['duration']
-                    await interaction.response.send_message('queue management purged')
-                elif action == 'pause':
-                    if self.queuing_pause:
-                        await interaction.response.send_message('queuing is already paused')
-                    else:
-                        await interaction.response.send_message('pause event queue management')
-                        self.queuing_pause = True
-                elif action == 'resume':
-                    if self.queuing_pause:
-                        await interaction.response.send_message('resume queue management')
-                        self.queuing_pause = False
-                    else:
-                        await interaction.response.send_message('queue management is already active')
             return None
 
         @self.slash_command(name='mode',
@@ -1732,7 +1692,7 @@ class Bot2b3(NextcordBot):
         )
         async def bot_stop(interaction: Interaction) -> None:
             if interaction.user.id == self.subjectId:
-                self.queuing_pause = True
+                self.queueRunning = False
                 for unit in BT_UNITS:
                     for ch in ('ch_A', 'ch_B'):
                         threads_settings[unit]['updated'] = True
@@ -1863,12 +1823,12 @@ class Bot2b3(NextcordBot):
                 'duration': duration,
                 'wait': True,
                 'display': type_action + ' ' + time.strftime('%H:%M:%S', event_time),
-                'counter': -1})
+                'counter': -1
+            })
 
         # find action associated to the event
         elif EVENT_ACTION[type_action]:
-            Logger.info(
-                "New event type {} added in queue : {}".format(type_action, EVENT_ACTION[type_action]))
+            Logger.info("New event type {} added in queue : {}".format(type_action, EVENT_ACTION[type_action]))
             # Level change -> queue
             if EVENT_ACTION[type_action]['type'] == 'lvl':
                 Logger.warning("New level event")
@@ -1881,7 +1841,8 @@ class Bot2b3(NextcordBot):
                     'duration': await self.check_duration(self, EVENT_ACTION[type_action]['duration']),
                     'wait': EVENT_ACTION[type_action]['wait'],
                     'display': type_action + ' ' + time.strftime('%H:%M:%S', event_time),
-                    'counter': -1})
+                    'counter': -1
+                })
             # Apply profile -> queue
             elif EVENT_ACTION[type_action]['type'] == 'pro':
                 Logger.warning("New profile event")
@@ -1893,7 +1854,8 @@ class Bot2b3(NextcordBot):
                     'duration': await self.check_duration(self, EVENT_ACTION[type_action]['duration']),
                     'wait': EVENT_ACTION[type_action]['wait'],
                     'display': type_action + ' ' + time.strftime('%H:%M:%S', event_time),
-                    'counter': -1})
+                    'counter': -1
+                })
             # Multi change
             elif EVENT_ACTION[type_action]['type'] == 'multi':
                 Logger.warning("New multiplier event")
@@ -1938,7 +1900,7 @@ class Bot2b3(NextcordBot):
                                                         headers=CHASTER_HEADERS) as update_dur:
                                     logger.debug(update_dur.text())
         else:
-            Logger.info("New event type {} unknow".format(type_action))
+            Logger.info("[Actions] New event type {} unknow".format(type_action))
 
     async def reverse_action(self, action: dict) -> None:
         """
@@ -2322,8 +2284,8 @@ class Bot2b3(NextcordBot):
         queue_stats['running'] = queue_nb_run
         queue_stats['waiting'] = queue_nb_wait
 
-        # if pause is enable stop here
-        if self.queuing_pause:
+        # Stop here if Queue in pause
+        if not self.queueRunning:
             return
 
         self.action_queue = tmp_array
