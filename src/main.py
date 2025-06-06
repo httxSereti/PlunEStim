@@ -770,16 +770,17 @@ class Bot2b3(NextcordBot):
         self.back_action_queue = []  # async back actions for estim config
         
         # Queue V2
-        self.queueActions: list[ActionDict] = []
-        pprint(self.queueActions)
+        # self.queueActions: list[ActionDict] = []
+        # pprint(self.queueActions)
         
-        self.queueActions.append({
-            "origine": "sandbox",
-            "type": "PROFILE",
-            "sla": "slal"
-        })
+        # self.queueActions.append({
+        #     "origine": "sandbox",
+        #     "type": "PROFILE",
+        #     "sla": "slal",
+            
+        # })
         
-        pprint(self.queueActions)
+        # pprint(self.queueActions)
         
         
         self.update_graph_status = 0  # update the image of all units status
