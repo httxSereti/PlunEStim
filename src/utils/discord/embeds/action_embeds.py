@@ -28,3 +28,5 @@ def EmbedPlayingActionProfile(
         value=f"{actionOrigin}",
         inline=True
     )
+    
+    return embed

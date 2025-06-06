@@ -28,9 +28,9 @@ import dotenv
 import nextcord
 import plotly.graph_objs as go  # type: ignore
 import serial.tools.list_ports  # type: ignore
+
 from bleak import BleakClient
-from discord_handler import DiscordHandler  # type: ignore
-from discord_webhook import DiscordWebhook
+from discord_webhook import DiscordWebhook # type: ignore
 from nextcord import Interaction, SlashOption
 from nextcord.ext.commands import Bot as NextcordBot
 from nextcord.ext import commands
@@ -40,10 +40,11 @@ from plotly.subplots import make_subplots  # type: ignore
 from pprint import pprint
 
 from supabase import create_client, Client
-from realtime import AsyncRealtimeClient, RealtimeSubscribeStates
+from realtime import AsyncRealtimeClient, RealtimeSubscribeStates # type: ignore
 
 from constants import DISCORD_TESTING_GUILD_IDS
-from notifier import *
+
+from typings import *
 from services.chaster import *
 from utils import *
 
@@ -60,15 +61,14 @@ intents.message_content = True
 intents.members = True
 
 # Directory
-DIR_BACKUP = pathlib.Path(os.getenv('DIR_BACKUP'))
-DIR_PROFILE = pathlib.Path(os.getenv('DIR_PROFILE'))
-DIR_TMP = pathlib.Path(os.getenv('DIR_TMP'))
+DIR_BACKUP = pathlib.Path(os.getenv('DIR_BACKUP')) # type: ignore
+DIR_PROFILE = pathlib.Path(os.getenv('DIR_PROFILE')) # type: ignore
+DIR_TMP = pathlib.Path(os.getenv('DIR_TMP')) # type: ignore
 
 # Chaster API
 CHASTER_TOKEN = os.getenv('CHASTER_TOKEN')
 CHASTER_URL = os.getenv('CHASTER_URL')
-CHASTER_HEADERS = {'accept': 'application/json', 'Authorization': 'Bearer ' + CHASTER_TOKEN,
-                   'Content-Type': 'application/json'}
+CHASTER_HEADERS = {'accept': 'application/json', 'Authorization': f'Bearer {CHASTER_TOKEN}', 'Content-Type': 'application/json'}
 
 # BT serial configuration for 2B
 SERIAL_BAUDRATE = 9600
@@ -750,7 +750,7 @@ class Bot2b3(NextcordBot):
         
         # Initialize Environment Vars
         self.subjectId: int = CONFIGURATION['subjectDiscordId']
-        self.administrators: set(int) = [self.subjectId, CONFIGURATION['trustedDiscordId']]
+        self.administrators: list[int] = [self.subjectId, CONFIGURATION['trustedDiscordId']]
         
         # Supabase
         # url: str = os.environ.get("SUPABASE_URL")
@@ -758,9 +758,9 @@ class Bot2b3(NextcordBot):
         # self.supabase: Client = create_client(url, key)
         
         # @TextChannel
-        self.cmdsChannel: nextcord.TextChannel = None
-        self.logChannel: nextcord.TextChannel = None
-        self.statusChannel: nextcord.TextChannel = None
+        self.cmdsChannel: nextcord.abc.GuildChannel | None = None
+        self.logChannel: nextcord.abc.GuildChannel | None = None
+        self.statusChannel: nextcord.abc.GuildChannel | None = None
         
         self.chaster: Chaster = Chaster()
         
@@ -768,6 +768,19 @@ class Bot2b3(NextcordBot):
         self.queueRunning = True  # Queue status.
         self.action_queue = []  # async actions for estim config
         self.back_action_queue = []  # async back actions for estim config
+        
+        # Queue V2
+        self.queueActions: list[ActionDict] = []
+        pprint(self.queueActions)
+        
+        self.queueActions.append({
+            "origine": "sandbox",
+            "type": "PROFILE",
+            "sla": "slal"
+        })
+        
+        pprint(self.queueActions)
+        
         
         self.update_graph_status = 0  # update the image of all units status
         self.BOT_HELP_CMD = {'help': ''}  # help structure
@@ -1691,7 +1704,7 @@ class Bot2b3(NextcordBot):
             description='Emergency stop'
         )
         async def bot_stop(interaction: Interaction) -> None:
-            if interaction.user.id == self.subjectId:
+            if interaction.user and interaction.user.id == self.subjectId:
                 self.queueRunning = False
                 for unit in BT_UNITS:
                     for ch in ('ch_A', 'ch_B'):
@@ -1949,7 +1962,7 @@ class Bot2b3(NextcordBot):
 
         """
         pprint(action)
-        pprint(threads_settings)
+        # pprint(threads_settings)
         Logger.info("{} action start".format(action['origine']))
         # Level update
         if action['type'] == 'lvl':
@@ -2034,9 +2047,8 @@ class Bot2b3(NextcordBot):
                         sensors_settings[sensor][value + '_alarm_number_action'] = sensors_settings[sensor][value + '_alarm_number']
                         # if alarm is active, add event in queue
                         if EVENT_ACTION[value] and sensors_settings[sensor]['alarm_enable']:
-                            Logger.warning('alarm sensor ' + sensor)
-                            await self.add_event_action(value, sensor + ' BT sensor ' + value + str(
-                                sensors_settings[sensor][value + '_alarm_number_action']), time.localtime())
+                            Logger.warning(f'[Sensor] Alarm! "{sensor}" Sensor fired!')
+                            await self.add_event_action(value, sensor + ' BT sensor ' + value + str(sensors_settings[sensor][value + '_alarm_number_action']), time.localtime())
 
     # for exception in tasks bt_sensor_alarm
     @tasks.loop(seconds=1)
@@ -2355,8 +2367,8 @@ class Bot2b3(NextcordBot):
     # @Bot is Ready
     async def on_ready(self):
         # Find and save usefull channels
-        self.logChannel = self.get_channel(CONFIGURATION['logsChannelId'])
-        self.statusChannel = self.get_channel(CONFIGURATION['statusChannelId'])
+        self.logChannel = self.get_channel(CONFIGURATION['logsChannelId']) # type: ignore
+        self.statusChannel = self.get_channel(CONFIGURATION['statusChannelId']) # type: ignore
         print(f"chaster={self.chaster.linked}")
         
         await self.chaster.linkLock()
@@ -2780,7 +2792,7 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
         address: BT addr of the module
         char_uuid: BT uuid for the sensor
     Returns:
-
+        None
     """
     sensors_settings[sensor]['sensor_online'] = False
     disconnected_event = asyncio.Event()

@@ -10,7 +10,7 @@ class Chaster():
     
     def __init__(self):
         self.token = os.getenv('CHASTER_TOKEN')
-        self.headers = {'accept': 'application/json', 'Authorization': 'Bearer ' + self.token , 'Content-Type': 'application/json'}
+        self.headers = {'accept': 'application/json', 'Authorization': f'Bearer {self.token}', 'Content-Type': 'application/json'}
         self.lockId: str = ""
         
         self.linked: bool = False
@@ -18,7 +18,7 @@ class Chaster():
         self.pilloryId: str = ""
         self.currentTaskVoteId: str = ""
         
-        self.pillorys: set(dict) = []
+        self.pillorys: list[dict] = []
         
     async def linkLock(self):
         async with aiohttp.ClientSession() as session:

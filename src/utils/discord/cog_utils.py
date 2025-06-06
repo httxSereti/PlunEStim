@@ -2,7 +2,8 @@ import nextcord as _nextcord
 import os as _os
 
 def get_command(data: dict) -> str:
-    """Returns the command string from a slash command data
+    """
+    Returns the command string from a slash command data
     
     Parameters
     ----------
@@ -24,12 +25,14 @@ def get_command(data: dict) -> str:
 
 
 def file_to_module(root: str, filepath: str) -> str:
-    """Converts a filepath to a module path
+    """
+    Converts a filepath to a module path
     
     Parameters
     ----------
     root: :class:`str`
         The root directory
+    \n
     filepath: :class:`str`
         The filepath to convert
         
@@ -42,7 +45,8 @@ def file_to_module(root: str, filepath: str) -> str:
 
 
 def module_to_file(filepath: str) -> str:
-    """Converts a module path to a filepath
+    """
+    Converts a module path to a filepath
     
     Parameters
     ----------
@@ -57,17 +61,20 @@ def module_to_file(filepath: str) -> str:
     return f"src.{filepath}".replace(".", _os.sep) + ".py"
 
 
-def get_cogs():
-    """Returns a set of all the cogs
+def get_cogs() -> set[str]:
+    """
+    Returns a set of all the cogs
     
     Returns
     -------
-    :class:`set`
+    :class:`set[str]`
         The set of all the cogs
     """
-    paths: list(str) = ["src\\commands", "src\\jobs", "src\\events"]
-    # paths: list(str) = ["commands", "events", "jobs"]
-    loadExceptions: list(str) = []
+    paths: list[str] = [
+        "src\\commands",
+        "src\\jobs",
+        "src\\events"
+    ]
     
     cogs = set()
     for path in paths:
@@ -75,7 +82,6 @@ def get_cogs():
             if not root.startswith("__"):
                 for file in files:
                     if file.endswith(".py"):
-                        # print(f"{root} - {file}")
                         cogs.add(file_to_module(root, file))
                         
     return cogs

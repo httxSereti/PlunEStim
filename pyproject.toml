@@ -29,6 +29,7 @@ discord-webhook = "*"
 playsound3 = "^3.2.3"
 supabase = "^2.15.1"
 realtime = "^2.4.3"
+mypy = "^1.16.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

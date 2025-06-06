@@ -13,7 +13,7 @@ async def check_permission(
     Returns: 
         true if authorized
     """    
-    if permission == "administrator" and ctx.user.id in ctx.client.administrators:
+    if permission == "administrator" and ctx.user and ctx.user.id in ctx.client.administrators:
         return True
     
     embed: nextcord.Embed = nextcord.Embed(
@@ -22,11 +22,12 @@ async def check_permission(
         color=nextcord.Color.red()
     )
     
-    embed.add_field(
-        name="User:",
-        value=f"<@{ctx.user.id}>",
-        inline=True
-    )
+    if ctx.user:
+        embed.add_field(
+            name="User:",
+            value=f"<@{ctx.user.id}>",
+            inline=True
+        )
     
     embed.add_field(
         name="Permission:",
