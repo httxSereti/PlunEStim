@@ -25,7 +25,7 @@ class SecurityCommands(Cog):
         if await check_permission(interaction, "administrator"):
             if self.bot.subjectId not in self.bot.administrators:
                 await interaction.response.send_message(embed=SecurityEmbedError(
-                    interaction.user.id,
+                    str(interaction.user.id), # type: ignore
                     "Command",
                     "Subject already got no permissions"
                 ))
@@ -43,7 +43,7 @@ class SecurityCommands(Cog):
         if await check_permission(interaction, "administrator"):
             if self.bot.subjectId in self.bot.administrators:
                 await interaction.response.send_message(embed=SecurityEmbedError(
-                    interaction.user.id,
+                    str(interaction.user.id), # type: ignore
                     "Command",
                     "Subject already have permissions"
                 ))
@@ -88,7 +88,7 @@ class SecurityCommands(Cog):
         if await check_permission(interaction, "administrator"):
             if member.id in self.bot.administrators:
                 await interaction.response.send_message(embed=SecurityEmbedError(
-                    interaction.user.id,
+                    str(interaction.user.id), # type: ignore
                     "Command",
                     "User already have permissions"
                 ))
@@ -114,7 +114,7 @@ class SecurityCommands(Cog):
         if await check_permission(interaction, "administrator"):
             if userId not in self.bot.administrators:
                 await interaction.response.send_message(embed=SecurityEmbedError(
-                    interaction.user.id,
+                    str(interaction.user.id), # type: ignore
                     "Command",
                     "User already don't have permissions"
                 ))
@@ -129,8 +129,11 @@ class SecurityCommands(Cog):
         admins: dict = {}
         
         for adminId in self.bot.administrators:
-            user: nextcord.User = self.bot.get_user(adminId)
-            choiceName = "{} ({})".format(user.display_name, user.name)
+            adminUser: nextcord.User = self.bot.get_user(adminId)
+            choiceName = "{} ({})".format(
+                adminUser.display_name,
+                adminUser.name
+            )
             admins[choiceName] = str(adminId)
 
         await interaction.response.send_autocomplete(admins)

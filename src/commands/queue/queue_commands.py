@@ -24,7 +24,7 @@ class QueueCommands(Cog):
     )
     async def view(self, interaction: Interaction):
         actionWaiting: int = 0
-        waitingActionStr: list(str) = []
+        waitingActionStr: list[str] = []
         
         waitingActionStr.append("# Actions in queue: \n")
         
@@ -49,9 +49,9 @@ class QueueCommands(Cog):
             
             purgedActions: int = 0
             
-            for idx in range(len(self.action_queue)):
-                if self.action_queue[idx]['counter'] == -1:
-                    self.action_queue[idx]['counter'] = self.action_queue[idx]['duration']
+            for idx in range(len(self.bot.action_queue)):
+                if self.bot.action_queue[idx]['counter'] == -1:
+                    self.bot.action_queue[idx]['counter'] = self.bot.action_queue[idx]['duration']
                     purgedActions = purgedActions + 1
                     
             await interaction.response.send_message(f"Removed {purgedActions} actions in the queue.")

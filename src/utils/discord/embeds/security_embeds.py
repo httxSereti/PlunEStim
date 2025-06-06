@@ -1,7 +1,7 @@
 import nextcord
 
 def SecurityEmbedError(
-    errorAuthor: str,
+    errorAuthor: str | None,
     errorName: str,
     errorReason: str,
 ) -> nextcord.Embed:
@@ -11,11 +11,12 @@ def SecurityEmbedError(
         color=nextcord.Color.red()
     )
     
-    embed.add_field(
-        name="User:",
-        value=f"<@{errorAuthor}>",
-        inline=True        
-    )
+    if errorAuthor:
+        embed.add_field(
+            name="User:",
+            value=f"<@{errorAuthor}>",
+            inline=True        
+        )
     
     embed.add_field(
         name="Reason:",
