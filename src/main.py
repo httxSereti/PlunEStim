@@ -762,7 +762,7 @@ class Bot2b3(NextcordBot):
         self.logChannel: nextcord.abc.GuildChannel | None = None
         self.statusChannel: nextcord.abc.GuildChannel | None = None
         
-        self.chaster: Chaster = Chaster()
+        self.chaster: Chaster = Chaster(self)
         
         # Queue        
         self.queueRunning = True  # Queue status.
@@ -770,21 +770,19 @@ class Bot2b3(NextcordBot):
         self.back_action_queue = []  # async back actions for estim config
         
         # Queue V2
-        # self.queueActions: list[ActionDict] = []
-        # pprint(self.queueActions)
+        self.queueActions: list[ActionDict] = []
+        pprint(self.queueActions)
         
-        # self.queueActions.append({
-        #     "origine": "sandbox",
-        #     "type": "PROFILE",
-        #     "sla": "slal",
-            
-        # })
+        self.queueActions.append({
+            "type": "PROFILE",
+            "issuer": "user:Sereti",
+            "duration": 15
+        })
         
-        # pprint(self.queueActions)
+        pprint(self.queueActions)
         
         
         self.update_graph_status = 0  # update the image of all units status
-        self.BOT_HELP_CMD = {'help': ''}  # help structure
         self.previous_2B_sync = False  # previous global 2B sync
         
         self.chaster_lockid = None  # id of the current chaster lock
@@ -793,13 +791,13 @@ class Bot2b3(NextcordBot):
         self.chaster_taskvote = {}  # vote list for task
         self.chaster_history_event_parsed = []  # wof/vote list for duration already parsed
         self.chaster_pilloryid = None  # id of the pillory extension
-        self.chaster_pillory_pool = 0  # number of poll
         self.chaster_pillory_vote_by_id = {}
 
         @self.slash_command(name='backup', description='Backup bot config')
-        async def bot_backup(interaction: Interaction,
-                             filename: str = SlashOption(name='name', description='backup_name',
-                                                         required=True)) -> None:
+        async def bot_backup(
+            interaction: Interaction,
+            filename: str = SlashOption(name='name', description='backup_name', required=True)
+        ) -> None:
             backup_data = {
                 'EVENT_ACTION': EVENT_ACTION,
                 'threads_settings': threads_settings,
@@ -2215,46 +2213,15 @@ class Bot2b3(NextcordBot):
             logger.warning(f"Task exception chaster_task")
             logger.debug(traceback.print_exc())
 
-    # Chaster parse pillory pooling
-    async def chaster_pillory(self) -> None:
-        """
-        Parse Chaster task extention for detecting new vote
-        Args:
-
-        Returns: None
-        """
-        # if no active pillory extention
-        if not self.chaster_pilloryid:
-            return
-        # get pillory info from API
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                    f'{CHASTER_URL}/locks/{self.chaster_lockid}/extensions/{self.chaster_pilloryid}/action',
-                    json={"action": "getStatus", "payload": {}}, headers=CHASTER_HEADERS) as data_current_vote:
-                json_feed = await data_current_vote.json()
-                if 'votes' in json_feed:
-                    for instance in json_feed['votes']:
-                        if instance['_id'] not in self.chaster_pillory_vote_by_id:
-                            self.chaster_pillory_vote_by_id[instance['_id']] = 0
-                        # check for new votes
-                        for i in range(self.chaster_pillory_vote_by_id[instance['_id']], instance['nbVotes']):
-                            logger.warning('chaster new pillory vote')
-                            # add event to queue
-                            await self.add_event_action(
-                                'pilloryvote',
-                                'pillory_chaster_' + str(i) + '_' + instance['_id'],
-                                time.localtime())
-                            self.chaster_pillory_vote_by_id[instance['_id']] = instance['nbVotes']
-
     # for exception in tasks chaster_pillory
     @tasks.loop(seconds=30)
     async def rerun_chaster_pillory(self):
         try:
-            await self.chaster_pillory()
+            await self.chaster.fetchPillories()
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.warning(f"Task exception chaster_pillory")
+            Logger.error(f"[Chaster-Threads] Task exception chaster_pillory")
             logger.debug(traceback.print_exc())
 
     # Event action queueing
