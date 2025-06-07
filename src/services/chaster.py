@@ -1,4 +1,5 @@
 import os
+import time
 import aiohttp
 
 from pprint import pprint
@@ -14,7 +15,9 @@ class Chaster():
     """
         Manage all Chaster funcs
     """
-    def __init__(self):
+    def __init__(self, bot):
+        self.bot = bot
+        
         # Requests params
         self.token = os.getenv('CHASTER_TOKEN')
         self.headers = {'accept': 'application/json', 'Authorization': f'Bearer {self.token}', 'Content-Type': 'application/json'}
@@ -61,7 +64,8 @@ class Chaster():
                     if extension['slug'] == "tasks":
                         self.currentTaskVoteId = extension['userData']['currentTaskVote']
                         Logger.info(f"[Chaster] Linked an active vote for a Task (id='{lock['_id']}')")
-                        
+                    
+        # Links Extensions    
         await self.fetchPillories()
 
         self.linked = True
@@ -105,15 +109,15 @@ class Chaster():
                             
                         # For events happened between checks, add it into actionQueue
                         for counter in range(self.pillories[vote['_id']]['nbVotes'], vote['nbVotes']):
-                            Logger.info(f'[Chaster] New pillory vote! Vote="{vote['_id']}", Counter="{counter + 1}"')
+                            Logger.info(f'[Chaster] New pillory vote! VoteId="{vote['_id']}", Counter="{counter + 1}"')
                             
-                            # TODO: Play all trigger rules of Events related to pilloryVote or events
-                            # await self.add_event_action(
-                            #     'pilloryvote',
-                            #     'pillory_chaster_' + str(i) + '_' + instance['_id'],
-                            #     time.localtime())
-                            # self.chaster_pillory_vote_by_id[instance['_id']] = instance['nbVotes']
+                            # TODO: Play all trigger rules of Events related to pilloryVote
+                            # Add action related to pilloryvote into actionQueue
+                            await self.bot.add_event_action(
+                                'pilloryvote',
+                                'pillory-' + vote['_id'] + '-' + str(counter),
+                                time.localtime()
+                            )
                             
-                        # Synchronise counter with Chaster
+                        # Synchronise Chaster counter with our
                         self.pillories[vote['_id']]['nbVotes'] = vote['nbVotes']
-                        
