@@ -2,7 +2,7 @@ from typing import TypedDict, Optional
 
 class PilloryVoteDict(TypedDict):
     """
-        Dict for an Action
+        Dict for PilloryVote
 
         Attributes
         ----------
@@ -21,3 +21,4 @@ class PilloryVoteDict(TypedDict):
     totalDurationAdded: int
     voteEndsAt: str
     
+    messageId: Optional[str]

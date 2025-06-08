@@ -6,11 +6,11 @@ class ActionDict(TypedDict, total=False):
 
         Attributes
         ----------
-        type: :class:`str`
+        actionType: :class:`str`
             The type of Action <PROFILE|LEVEL|MULT|ADD>.
         \n
-        origin: :class:`str`
-            What triggered this action (ex: chaster_pilloryVote).
+        issuer: :class:`str`
+            Issuer of the Action.
         \n
         duration: :class:`bool`
             Duration of Action in seconds
@@ -21,14 +21,20 @@ class ActionDict(TypedDict, total=False):
         displayName: :class:`bool`
             How Action should be displayed in UI (ex: Pillory vote from Chaster, at 07:00:00)
         \n
+        tags: :class:`list[str]`
+            Tags associated with the Action (correction, pleasure...)
+        \n
         profile: :class:`str`
             Profile Name to use.
     """
-    type: str
-    origin: str 
+    
+    actionType: str
+    issuer: str
     duration: int
     cumulative: bool
     displayName: str
+    
+    tags: list[str]
     
     profile: Optional[str]
     level: Optional[float]
