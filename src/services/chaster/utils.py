@@ -12,7 +12,9 @@ def EmbedChasterPilloryStarted(
         description="You've been pilloried!..",
         color=nextcord.Color.purple(),
         timestamp=datetime.now()
-    )
+    )       
+    
+    embed.set_thumbnail("https://cdn02.chaster.app/app/uploads/avatars/bB4wAseSW4arDWWU.jpg")
     
     embed.add_field(
         name=":envelope: Reason:",
@@ -58,6 +60,8 @@ def EmbedChasterPilloryVote(
         timestamp=datetime.now()
     )
     
+    embed.set_thumbnail("https://cdn02.chaster.app/app/uploads/avatars/bB4wAseSW4arDWWU.jpg")
+    
     embed.add_field(
         name=":envelope: Reason:",
         value=f"{reason}",
@@ -66,7 +70,7 @@ def EmbedChasterPilloryVote(
     
     embed.add_field(
         name=":level_slider: Votes received:",
-        value=f"+ {nbVotes} votes ({nbTotalVotes} votes)",
+        value=f"<:increase:1384470395100467220> {nbVotes} votes ({nbTotalVotes} votes)",
         inline=False
     )
     

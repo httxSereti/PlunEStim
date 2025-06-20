@@ -42,7 +42,9 @@ from pprint import pprint
 from supabase import create_client, Client
 from realtime import AsyncRealtimeClient, RealtimeSubscribeStates # type: ignore
 
-from constants import DISCORD_TESTING_GUILD_IDS
+from constants import DISCORD_GUILD_IDS
+
+from profiles import ProfileModule
 
 from typings import *
 from services.chaster import *
@@ -736,14 +738,17 @@ class Bot2b3(NextcordBot):
     # refactoré avant
     #
 
-    def __init__(self):
+    def __init__(
+        self,
+        profile: ProfileModule
+    ):
         super().__init__(
             command_prefix="/", 
             description='ESTIM Remote management',
             help_command=None,
             intents=intents,
             rollout_all_guilds=True,
-            default_guild_ids=DISCORD_TESTING_GUILD_IDS
+            default_guild_ids=DISCORD_GUILD_IDS
         )
         
         self.initialized: bool = False
@@ -762,6 +767,7 @@ class Bot2b3(NextcordBot):
         self.logChannel: nextcord.abc.GuildChannel | None = None
         self.statusChannel: nextcord.abc.GuildChannel | None = None
         
+        self.profile: ProfileModule = profile
         self.chaster: Chaster = Chaster(self)
         
         # Queue        
@@ -884,8 +890,7 @@ class Bot2b3(NextcordBot):
                         for field in bck_settings[bck_bt_name]:
                             if field in PROFILE_FIELDS:
                                 if field in ('ch_A_max', 'ch_B_max'):
-                                    threads_settings[bck_bt_name][field] = int(
-                                        bck_settings[bck_bt_name][field] * lvl_prct_arg / 100)
+                                    threads_settings[bck_bt_name][field] = int(bck_settings[bck_bt_name][field] * lvl_prct_arg / 100)
                                 elif field in ('ch_A', 'ch_B', 'ramp_progress'):
                                     threads_settings[bck_bt_name][field] = 0  # Ramp will update the level
                                 else:
@@ -2338,48 +2343,9 @@ class Bot2b3(NextcordBot):
         self.logChannel = self.get_channel(CONFIGURATION['logsChannelId']) # type: ignore
         self.statusChannel = self.get_channel(CONFIGURATION['statusChannelId']) # type: ignore
         print(f"chaster={self.chaster.linked}")
+        print(f"profile={self.profile.profileFiles}")
         
         await self.chaster.linkLock()
-        # response = (
-        #     self.supabase.table("events")
-        #     .select("*")
-        #     .execute()
-        # )
-        
-        # def message_received(payload):
-        #     print(f"Broadcast received: {payload}")
-        
-        # def profile_received(payload):
-        #     print(f"Profile received: {payload}")
-            
-        # REALTIME_URL = f"wss://sps.seith.cloud/realtime/v1"
-        # API_KEY = os.environ.get("SUPABASE_KEY")
-
-        # socket = AsyncRealtimeClient(REALTIME_URL, API_KEY)
-        # channel = socket.channel("plune")
-
-        # def _on_subscribe(status: RealtimeSubscribeStates, err: Optional[Exception]):
-        #     if status == RealtimeSubscribeStates.SUBSCRIBED:
-        #         print("Connected!")
-        #     elif status == RealtimeSubscribeStates.CHANNEL_ERROR:
-        #         print(f"There was an error subscribing to channel: {err.args}")
-        #     elif status == RealtimeSubscribeStates.TIMED_OUT:
-        #         print("Realtime server did not respond in time.")
-        #     elif status == RealtimeSubscribeStates.CLOSED:
-        #         print("Realtime channel was unexpectedly closed.")
-
-        # await channel \
-        # .on_broadcast('profile', profile_received) \
-        # .on_broadcast('*', message_received) \
-        # .subscribe(_on_subscribe)
-        
-        
-        # print("7s7")
-        # print(response)
-        # await self.logChannel.send(embed=embedDiscordBotReady(
-            
-        # ))
-        # return True
         
         # Start all tasks
         self.rerun_update_status.start()  # bot console
@@ -2974,6 +2940,10 @@ if __name__ == '__main__':
     
     Logger.info("Starting PlunEStim 1.0.0")
     
+    # Profiles Module
+    profile = ProfileModule()
+    profile.loadProfiles()
+    
     # init thread for BT sensors
     sensors_init()
     if ENABLE_BT_SENSORS:
@@ -3003,7 +2973,9 @@ if __name__ == '__main__':
         try:
             Logger.info("[Discord] Starting Discord Bot...")
             # time.sleep(10)
-            bot = Bot2b3()
+            bot = Bot2b3(
+                profile
+            )
             
             # Try to load all the cogs
             for cog in get_cogs():

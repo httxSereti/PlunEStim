@@ -3,7 +3,6 @@ from nextcord import Interaction, SlashOption, slash_command
 from nextcord.ext.commands import Cog
 
 from utils.discord import check_permission, SecurityEmbedError
-from constants import DISCORD_TESTING_GUILD_IDS
 
 class SecurityCommands(Cog):
     
@@ -12,7 +11,6 @@ class SecurityCommands(Cog):
 
     @slash_command(
         name="security",
-        guild_ids=DISCORD_TESTING_GUILD_IDS
     )
     async def security(self, interaction: Interaction):
         pass 
