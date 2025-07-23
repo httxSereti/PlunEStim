@@ -191,14 +191,14 @@ def filter_logger(record):
 
 # File
 logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s: %(threadName)s %(module)s %(message)s',
+                    format='[%(asctime)s] %(threadName)s %(module)s %(message)s',
                     datefmt='%H:%M:%S',
                     filename='log.txt',
                     filemode='w')
 # Console
 console = logging.StreamHandler()
 console.setLevel(logging.INFO)
-console.setFormatter(logging.Formatter('%(asctime)s: %(threadName)s %(module)s %(message)s'))
+console.setFormatter(logging.Formatter('[%(asctime)s] %(threadName)s %(module)s %(message)s'))
 console.addFilter(filter_logger)
 logger.addHandler(console)
 # Discord Log
@@ -206,25 +206,12 @@ logger.addHandler(console)
 logger_nextcord = logging.getLogger('nextcord')
 logger_nextcord.setLevel(logging.INFO)
 handler_nextcord = logging.FileHandler(filename='nextcord.log', encoding='utf-8', mode='w')
-handler_nextcord.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+handler_nextcord.setFormatter(logging.Formatter('[%(asctime)s]%(levelname)s:%(name)s: %(message)s'))
 logger_nextcord.addHandler(handler_nextcord)
-
-logger_asyncio = logging.getLogger('asyncio')
-logger_asyncio.setLevel(logging.DEBUG)
-handler_asyncio = logging.FileHandler(filename='asyncio.log', encoding='utf-8', mode='w')
-handler_asyncio.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-logger_asyncio.addHandler(handler_asyncio)
-
-logger_aiohttp = logging.getLogger('aiohttp.client')
-logger_aiohttp.setLevel(logging.DEBUG)
-handler_aiohttp = logging.FileHandler(filename='aiohttp.log', encoding='utf-8', mode='w')
-handler_aiohttp.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
-logger_asyncio.addHandler(handler_aiohttp)
 
 # init multi threading
 sensors_settings = {}
 threads_settings = {}
-threads = {}
 
 # Slash_Command constantes
 PROFILE_RANDOM = 'ABCDEFGHIJ'
@@ -1809,6 +1796,16 @@ class Bot2b3(NextcordBot):
             return None
 
     # ------------- Event management ------------------
+    async def trigger_event(
+        self, 
+        eventName: TriggerableEvent
+    ) -> None:
+        """
+            WIP
+            Handle triggered Events, will check for `TriggerRules` and call them and send `Notifications`
+        """
+        # TODO: trigger event func
+        Logger.info(f"[Events] Events received, [name={eventName}]")
 
     # add action into queue
     async def add_event_action(self, type_action: str, origin_action: str, event_time) -> None:
@@ -2939,6 +2936,8 @@ def mk2b_init():
 if __name__ == '__main__':
     
     Logger.info("Starting PlunEStim 1.0.0")
+    
+    threads = {}
     
     # Profiles Module
     profile = ProfileModule()

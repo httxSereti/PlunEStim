@@ -6,8 +6,7 @@ class PingCommand(Cog):
         self.bot = bot
 
     @slash_command(
-        description="Show current latency", 
-        force_global=True
+        description="Show current latency"
     )
     async def ping(self, interaction: Interaction):
         await interaction.send(f"Pong! {self.bot.latency * 1000:.2f}ms")

@@ -58,6 +58,7 @@ class Chaster():
                     self.lockId = lock['_id']
                     Logger.info(f"[Chaster] Linked an active lock '{lock['title']}', (id='{lock['_id']}')")
                     
+                # Links Extensions
                 for extension in lock['extensions']:
                     # pprint(extension)
                     
@@ -146,7 +147,7 @@ class Chaster():
                             # TODO: use trigger rules over events (one event can have many actions)
                             # Trigger event 
                             await self.bot.add_event_action(
-                                'pilloryvote',
+                                'chaster_PilloryVote',
                                 'pillory-' + vote['_id'] + '-' + str(counter),
                                 time.localtime()
                             )

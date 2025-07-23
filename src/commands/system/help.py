@@ -4,6 +4,10 @@ import nextcord
 from nextcord import Interaction, slash_command, SlashOption
 from nextcord.ext.commands import Cog
 
+from typings.enums import TriggerableEvent
+
+from pprint import pprint
+
 class HelpCommand(Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -13,11 +17,17 @@ class HelpCommand(Cog):
     )
     async def help(self, interaction: Interaction):
         
-        await self.bot.add_event_action(
-            'pilloryvote',
-            'pillory_chaster' + '_' + "lucie",
-            time.localtime()
+        pprint(list(TriggerableEvent))
+        
+        await self.bot.trigger_event(
+            TriggerableEvent.CHASTER_PILLORY_VOTE
         )
+        
+        # await self.bot.add_event_action(
+        #     'pilloryvote',
+        #     'pillory_chaster' + '_' + "lucie",
+        #     time.localtime()
+        # )
         
         
         await interaction.send(f"Pong! {self.bot.latency * 1000:.2f}ms")
