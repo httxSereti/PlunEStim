@@ -7,7 +7,7 @@ from datetime import datetime
 
 from pprint import pprint
 
-from typings import PilloryVoteDict
+from typings import PilloryVoteDict, TriggerableEvent
 
 from constants import CHASTER_API_URL, PILLORY_PLAY_PREVIOUS_EVENTS
 from utils import Logger
@@ -66,11 +66,11 @@ class Chaster():
                         pilloryExtensionId = extension['_id']
                         if self.pilloryExtensionId != pilloryExtensionId:
                             self.pilloryExtensionId = pilloryExtensionId
-                            Logger.info(f"[Chaster] Pillory Extension is enabled and linked (id='{pilloryExtensionId}')")
+                            Logger.info(f"[Chaster] Pillory Extension is enabled (id='{pilloryExtensionId}')")
                             
                     if extension['slug'] == "tasks":
                         self.currentTaskVoteId = extension['userData']['currentTaskVote']
-                        Logger.info(f"[Chaster] Linked an active vote for a Task (id='{lock['_id']}')")
+                        Logger.info(f"[Chaster] Task Extension is enabled (id='{lock['_id']}')")
                     
         # Links Extensions    
         await self.fetchPillories()
@@ -101,10 +101,18 @@ class Chaster():
                     
                     # Explore runnning votes
                     for vote in data['votes']:
+                        
+                        pilloryId = vote['_id']
+                        
                         # Not already tracked, track it.
-                        if vote['_id'] not in self.pillories:
+                        if pilloryId not in self.pillories:
+                            
+                            await self.bot.trigger_event(
+                                TriggerableEvent.CHASTER_PILLORY_STARTED
+                            )
+                            
                             # Add a StatusEmbed for this vote
-                            messageId: nextcord.Message = await self.bot.statusChannel.send(
+                            messageId: nextcord.Message = await self.bot.logChannel.send(
                                 embed=EmbedChasterPilloryStarted(
                                     reason=vote['reason'],
                                     nbVotes=vote['nbVotes'],
@@ -114,7 +122,7 @@ class Chaster():
                             )
                             
                             # Store the new vote
-                            self.pillories[vote['_id']] = {
+                            self.pillories[pilloryId] = {
                                 "canVote": vote['canVote'],
                                 "createdAt": vote['createdAt'],
                                 "nbVotes": 0 if PILLORY_PLAY_PREVIOUS_EVENTS else vote['nbVotes'], # If true, will play all votes previously recorded too
@@ -123,8 +131,9 @@ class Chaster():
                                 "voteEndsAt": vote['voteEndsAt'],
                                 "messageId": messageId.id
                             }
-                            
-                        newVotes: int = vote['nbVotes'] - self.pillories[vote['_id']]['nbVotes']
+                           
+                        # votes from Chaster - our votes logged = newVotes amount 
+                        newVotes: int = vote['nbVotes'] - self.pillories[pilloryId]['nbVotes']
                         
                         # Notify only if votes has been updated
                         if newVotes > 0:
@@ -143,15 +152,19 @@ class Chaster():
                             )
 
                         # For events happened between checks, add it into actionQueue
-                        for counter in range(self.pillories[vote['_id']]['nbVotes'], vote['nbVotes']):
-                            # TODO: use trigger rules over events (one event can have many actions)
+                        for counter in range(self.pillories[pilloryId]['nbVotes'], vote['nbVotes']):
+                            # V2 
+                            await self.bot.trigger_event(
+                                TriggerableEvent.CHASTER_PILLORY_STARTED
+                            )
+                            
                             # Trigger event 
                             await self.bot.add_event_action(
-                                'chaster_PilloryVote',
-                                'pillory-' + vote['_id'] + '-' + str(counter),
+                                'chaster_pillory_vote',
+                                'pillory-' + pilloryId + '-' + str(counter),
                                 time.localtime()
                             )
                             
                         # Synchronise Chaster counter with app
-                        self.pillories[vote['_id']]['nbVotes'] = vote['nbVotes']
+                        self.pillories[pilloryId]['nbVotes'] = vote['nbVotes']
                         # TODO: Edit PilloryEmbed to update nbVotes

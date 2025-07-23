@@ -1,5 +1,5 @@
 {
-"vote": {
+  "chaster_vote_add": {
     "type": "lvl",
     "unit": "123RM",
     "dest": "ABRM",
@@ -7,13 +7,13 @@
     "duration": "60",
     "wait": true
   },
-  "vote_sub": {
+  "chaster_vote_sub": {
     "type": "multi",
     "target": "all",
     "prct": -3,
     "rnd": true
   },
-  "pilloryvote": {
+  "chaster_pillory_vote": {
     "type": "pro",
     "profile": "E",
     "level": 100,
