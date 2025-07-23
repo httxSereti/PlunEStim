@@ -39,9 +39,6 @@ from plotly.subplots import make_subplots  # type: ignore
 
 from pprint import pprint
 
-from supabase import create_client, Client
-from realtime import AsyncRealtimeClient, RealtimeSubscribeStates # type: ignore
-
 from constants import DISCORD_GUILD_IDS
 
 from profiles import ProfileModule
@@ -744,11 +741,6 @@ class Bot2b3(NextcordBot):
         self.subjectId: int = CONFIGURATION['subjectDiscordId']
         self.administrators: list[int] = [self.subjectId, CONFIGURATION['trustedDiscordId']]
         
-        # Supabase
-        # url: str = os.environ.get("SUPABASE_URL")
-        # key: str = os.environ.get("SUPABASE_KEY")
-        # self.supabase: Client = create_client(url, key)
-        
         # @TextChannel
         self.cmdsChannel: nextcord.abc.GuildChannel | None = None
         self.logChannel: nextcord.abc.GuildChannel | None = None
@@ -785,12 +777,12 @@ class Bot2b3(NextcordBot):
         self.chaster_history_event_parsed = []  # wof/vote list for duration already parsed
         self.chaster_pilloryid = None  # id of the pillory extension
         self.chaster_pillory_vote_by_id = {}
-
+        
         @self.slash_command(name='backup', description='Backup bot config')
         async def bot_backup(
             interaction: Interaction,
             filename: str = SlashOption(name='name', description='backup_name', required=True)
-        ) -> None:
+        ):
             backup_data = {
                 'EVENT_ACTION': EVENT_ACTION,
                 'threads_settings': threads_settings,
@@ -2971,7 +2963,7 @@ if __name__ == '__main__':
     while True:
         try:
             Logger.info("[Discord] Starting Discord Bot...")
-            # time.sleep(10)
+
             bot = Bot2b3(
                 profile
             )

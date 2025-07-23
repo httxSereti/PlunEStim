@@ -27,8 +27,6 @@ poetryup = "*"
 kaleido = "0.2.1"
 discord-webhook = "*"
 playsound3 = "^3.2.3"
-supabase = "^2.15.1"
-realtime = "^2.4.3"
 mypy = "^1.16.0"
 
 [build-system]
