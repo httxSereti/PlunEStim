@@ -1,42 +1,37 @@
 import nextcord
 from datetime import datetime
+from typings import TriggerableEvent
 
-def EmbedChasterPilloryStarted(
-    reason: str,  
-    nbVotes: int,
-    startedAt: str,
-    endAt: str,
+def EmbedChasterWOFTurned(
+    author: str,  
+    wofText: str,
+    triggeredAt: str,
 ) -> nextcord.Embed:
+    
+    # replace author to have a better display
+    if author == "user":
+        author = ":lock: **Subject**"
+    else:
+        author = ":closed_lock_with_key: Keyholder"
+    
     embed: nextcord.Embed = nextcord.Embed(
-        title=":hammer: Pillory!",
-        description="You've been pilloried!..",
+        title=":arrows_counterclockwise: Turned WOF",
+        description="{} turned the wheel of fortune".format(author),
         color=nextcord.Color.purple(),
         timestamp=datetime.now()
-    )       
+    )
     
     embed.set_thumbnail("https://cdn02.chaster.app/app/uploads/avatars/bB4wAseSW4arDWWU.jpg")
     
     embed.add_field(
-        name=":envelope: Reason:",
-        value=f"{reason}",
+        name=":envelope: Action:",
+        value=f"{wofText}",
         inline=False
     )
     
     embed.add_field(
-        name=":level_slider: Votes:",
-        value=f"{nbVotes} votes",
-        inline=False
-    )
-    
-    embed.add_field(
-        name=":alarm_clock: Started at:",
-        value="<t:{}:R>".format(int(datetime.fromisoformat(startedAt).timestamp())),
-        inline=True
-    )
-    
-    embed.add_field(
-        name=":alarm_clock: End at:",
-        value="<t:{}:R>".format(int(datetime.fromisoformat(endAt).timestamp())),
+        name=":alarm_clock: Turned at:",
+        value="<t:{}:R>".format(int(datetime.fromisoformat(triggeredAt).timestamp())),
         inline=True
     )
     
@@ -47,15 +42,17 @@ def EmbedChasterPilloryStarted(
     
     return embed
 
-def EmbedChasterPilloryVote(
-    reason: str,  
-    nbVotes: int,
-    nbTotalVotes: int,
-    endAt: str,
+def EmbedChasterSharedLinkVote(
+    author: str,  
+    duration: int,
+    triggeredAt: str,
 ) -> nextcord.Embed:
+    
+    consequence: str = "added time" if duration > 0 else "removed time"
+    
     embed: nextcord.Embed = nextcord.Embed(
-        title=":hammer: Pillory Vote!",
-        description="You've received a vote!..",
+        title=":wilted_rose: An user voted on your lock!",
+        description="**{}** {}".format(author, consequence),
         color=nextcord.Color.purple(),
         timestamp=datetime.now()
     )
@@ -63,20 +60,14 @@ def EmbedChasterPilloryVote(
     embed.set_thumbnail("https://cdn02.chaster.app/app/uploads/avatars/bB4wAseSW4arDWWU.jpg")
     
     embed.add_field(
-        name=":envelope: Reason:",
-        value=f"{reason}",
+        name=":envelope: Duration:",
+        value=f"{duration} s",
         inline=False
     )
     
     embed.add_field(
-        name=":level_slider: Votes received:",
-        value=f"<:increase:1384470395100467220> {nbVotes} votes ({nbTotalVotes} votes)",
-        inline=False
-    )
-    
-    embed.add_field(
-        name=":alarm_clock: End at:",
-        value="<t:{}:R>".format(int(datetime.fromisoformat(endAt).timestamp())),
+        name=":alarm_clock: Triggered at:",
+        value="<t:{}:R>".format(int(datetime.fromisoformat(triggeredAt).timestamp())),
         inline=True
     )
     

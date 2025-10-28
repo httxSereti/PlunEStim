@@ -19,10 +19,6 @@ class HelpCommand(Cog):
         
         pprint(list(TriggerableEvent))
         
-        await self.bot.trigger_event(
-            TriggerableEvent.CHASTER_PILLORY_VOTE
-        )
-        
         # await self.bot.add_event_action(
         #     'pilloryvote',
         #     'pillory_chaster' + '_' + "lucie",

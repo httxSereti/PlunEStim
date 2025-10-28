@@ -45,6 +45,7 @@ from profiles import ProfileModule
 
 from typings import *
 from services.chaster import *
+from services.notifier import *
 from utils import *
 
 # load env
@@ -748,6 +749,7 @@ class Bot2b3(NextcordBot):
         
         self.profile: ProfileModule = profile
         self.chaster: Chaster = Chaster(self)
+        self.notifier: Notifier = Notifier(self)
         
         # Queue        
         self.queueRunning = True  # Queue status.
@@ -756,15 +758,15 @@ class Bot2b3(NextcordBot):
         
         # Queue V2
         self.queueActions: list[ActionDict] = []
-        pprint(self.queueActions)
+        # pprint(self.queueActions)
         
-        self.queueActions.append({
-            "type": "PROFILE",
-            "issuer": "user:Sereti",
-            "duration": 15
-        })
+        # self.queueActions.append({
+        #     "type": "PROFILE",
+        #     "issuer": "user:Sereti",
+        #     "duration": 15
+        # })
         
-        pprint(self.queueActions)
+        # pprint(self.queueActions)
         
         
         self.update_graph_status = 0  # update the image of all units status
@@ -1790,14 +1792,22 @@ class Bot2b3(NextcordBot):
     # ------------- Event management ------------------
     async def trigger_event(
         self, 
-        eventName: TriggerableEvent
+        event_type: TriggerableEvent,
+        **kwargs,
     ) -> None:
         """
             WIP
             Handle triggered Events, will check for `TriggerRules` and call them and send `Notifications`
         """
         # TODO: trigger event func
-        Logger.info(f"[Events] Events received, [name={eventName}]")
+        Logger.info(f"[Events] Events received, [type={event_type}]")
+        
+        # dispatch notification through discord
+        await self.notifier.triggerEvent(event_type, eventData=kwargs["eventData"])
+        
+        # debug
+        if kwargs and "eventData" in kwargs:
+            pprint(kwargs['eventData'])
 
     # add action into queue
     async def add_event_action(self, type_action: str, origin_action: str, event_time) -> None:
@@ -1954,7 +1964,7 @@ class Bot2b3(NextcordBot):
         Returns: None
 
         """
-        pprint(action)
+        # pprint(action)
         # pprint(threads_settings)
         Logger.info("{} action start".format(action['origine']))
         # Level update
@@ -2136,6 +2146,7 @@ class Bot2b3(NextcordBot):
                         # parse wheel of fortune
                         elif chaster_event['type'] == 'wheel_of_fortune_turned' and chaster_event['payload']['segment']['type'] == 'text':
                             # Looking for keyword
+                            
                             m = re.search('^(\\d|[A-Z][A-Z,a-z][A-Z,a-z]):', chaster_event['payload']['segment']['text'])
                             if m:
                                 print('new chaster wheel of fortune action:' + m.group(1))
@@ -2150,6 +2161,7 @@ class Bot2b3(NextcordBot):
     async def rerun_chaster_history(self):
         try:
             await self.chaster_history()
+            await self.chaster.monitorHistory()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -2331,8 +2343,8 @@ class Bot2b3(NextcordBot):
         # Find and save usefull channels
         self.logChannel = self.get_channel(CONFIGURATION['logsChannelId']) # type: ignore
         self.statusChannel = self.get_channel(CONFIGURATION['statusChannelId']) # type: ignore
-        print(f"chaster={self.chaster.linked}")
-        print(f"profile={self.profile.profileFiles}")
+        # print(f"chaster={self.chaster.linked}")
+        # print(f"profile={self.profile.profileFiles}")
         
         await self.chaster.linkLock()
         
