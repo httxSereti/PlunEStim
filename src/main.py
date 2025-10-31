@@ -1602,25 +1602,15 @@ class Bot2b3(NextcordBot):
             await interaction.response.send_message(reply_event)
 
         # ----- SENSORS --------
-        @self.slash_command(name='sensors', )
+        @self.slash_command(name='sensors')
         async def bot_sensors(interaction: nextcord.Interaction):
             pass
 
         @bot_sensors.subcommand(description='Display sensors configuration')
-        async def display(interaction: Interaction) -> None:
-            print(sensors_settings)
-            config_txt = [" --- Sensors configuration ---"]
-            for sensor in sorted(sensors_settings.keys()):
-                config_txt.append(" --- {}  alarm enable:{}".format(sensor, sensors_settings[sensor]["alarm_enable"]))
-                for field in sorted(sensors_settings[sensor].keys()):
-                    if ma := re.match(r"^(\w+)_alarm_level$", field):
-                        value = ma[1]
-                        config_txt.append("{} threshold:{} start delay:{} restart delay:{}".format(
-                            value,
-                            sensors_settings[sensor][value + '_alarm_level'],
-                            sensors_settings[sensor][value + '_delay_on'],
-                            sensors_settings[sensor][value + '_delay_off']))
-            await interaction.response.send_message("\n".join(config_txt))
+        async def display(
+            interaction: Interaction
+        ) -> None:
+            await interaction.response.send_message(embed=EmbedSensorConfiguration(sensors_settings))
             return None
 
         @bot_sensors.subcommand(description='Activate sensor alarm')
@@ -1689,15 +1679,16 @@ class Bot2b3(NextcordBot):
             description='Emergency stop'
         )
         async def bot_stop(interaction: Interaction) -> None:
-            if interaction.user and interaction.user.id == self.subjectId:
-                self.queueRunning = False
-                for unit in BT_UNITS:
-                    for ch in ('ch_A', 'ch_B'):
-                        threads_settings[unit]['updated'] = True
-                        threads_settings[unit][ch] = 0
-                        threads_settings[unit][ch + '_max'] = 0
-                await interaction.response.send_message('stop all channels')
-                self.update_graph_status = 0
+            if interaction.user:
+                if interaction.user.id == self.subjectId or await check_permission(interaction, 'administrator'):
+                    self.queueRunning = False
+                    for unit in BT_UNITS:
+                        for ch in ('ch_A', 'ch_B'):
+                            threads_settings[unit]['updated'] = True
+                            threads_settings[unit][ch] = 0
+                            threads_settings[unit][ch + '_max'] = 0
+                    await interaction.response.send_message('stop all channels')
+                    self.update_graph_status = 0
             return None
 
         # ----- RAMP COMMANDS ------
@@ -2736,11 +2727,13 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
     def disconnected_callback(bt_client):
         Logger.info(f"[Sensors] {sensor} sensor is disconnected")
         sensors_settings[sensor]['sensor_online'] = False
+        
         if sensor == 'sound':
             sensor_check_val(sensor, 'sound', 0)
         else:
             sensor_check_val(sensor, 'move', 0)
             sensor_check_val(sensor, 'position', 0)
+            
         disconnected_event.set()
 
     async with BleakClient(address, disconnected_callback=disconnected_callback) as client:
@@ -2761,7 +2754,7 @@ def thread_sensors_bt(sensor: str, addr: str, service: str) -> None:
     Returns:
 
     """
-    Logger.info(f"Start sensor {sensor} thread")
+    Logger.info(f"[Sensors] Start Sensor '{sensor}' thread")
     while True:
         try:
             # thread isolation
