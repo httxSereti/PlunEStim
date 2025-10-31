@@ -1568,38 +1568,11 @@ class Bot2b3(NextcordBot):
         async def bot_events(interaction: nextcord.Interaction):
             pass
 
-        @bot_events.subcommand(description='List all events action')
+        @bot_events.subcommand(
+            description='List all events action'
+        )
         async def list(interaction: Interaction) -> None:
-            reply_event = '------ actions for events -----------'
-            for action in EVENT_ACTION:
-                if EVENT_ACTION[action]:
-                    if EVENT_ACTION[action]['type'] == 'lvl':
-                        reply_event = "{}\n event {} => unit:{} channel:{} level:{} duration:{} wait other event:{}". \
-                            format(reply_event, action, EVENT_ACTION[action]['unit'],
-                                   EVENT_ACTION[action]['dest'],
-                                   EVENT_ACTION[action]['level'],
-                                   EVENT_ACTION[action]['duration'],
-                                   EVENT_ACTION[action]['wait']
-                                   )
-                    elif EVENT_ACTION[action]['type'] == 'pro':
-                        reply_event = "{}\n event {} => profile:{} level:{}% duration:{} wait other event:{}". \
-                            format(reply_event, action, EVENT_ACTION[action]['profile'],
-                                   EVENT_ACTION[action]['level'],
-                                   EVENT_ACTION[action]['duration'],
-                                   EVENT_ACTION[action]['wait']
-                                   )
-                    elif EVENT_ACTION[action]['type'] == 'add':
-                        reply_event = "{}\n event {} => add duration:{} min only max:{}". \
-                            format(reply_event, action, EVENT_ACTION[action]['duration'],
-                                   EVENT_ACTION[action]['only_max']
-                                   )
-                    elif EVENT_ACTION[action]['type'] == 'multi':
-                        reply_event = "{}\n event {} => change multiplier: {} % on {} random={}". \
-                            format(reply_event, action,
-                                   EVENT_ACTION[action]['prct'], EVENT_ACTION[action]['target']
-                                   , EVENT_ACTION[action]['rnd']
-                                   )
-            await interaction.response.send_message(reply_event)
+            await interaction.response.send_message(embed=EmbedEventList(EVENT_ACTION))
 
         # ----- SENSORS --------
         @self.slash_command(name='sensors')
