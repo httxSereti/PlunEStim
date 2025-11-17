@@ -1579,7 +1579,7 @@ class Bot2b3(NextcordBot):
         async def bot_sensors(interaction: nextcord.Interaction):
             pass
 
-        @bot_sensors.subcommand(description='Display sensors configuration')
+        @bot_sensors.subcommand(description='Display Sensors configurations and status')
         async def display(
             interaction: Interaction
         ) -> None:

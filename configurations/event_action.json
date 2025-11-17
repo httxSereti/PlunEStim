@@ -1,41 +1,42 @@
 {
   "chaster_vote_add": {
     "type": "lvl",
-    "unit": "2",
-    "dest": "A",
-    "level": "%+7",
-    "duration": "30",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+10",
+    "duration": "20",
     "wait": true
   },
   "chaster_vote_sub": {
     "type": "lvl",
-    "unit": "2",
-    "dest": "A",
-    "level": "%+5",
-    "duration": "15",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+20",
+    "duration": "20",
     "wait": true
   },
   "vote": {
     "type": "lvl",
-    "unit": "2",
-    "dest": "A",
-    "level": "%+10",
-    "duration": "10",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "5",
     "wait": true
   },
   "vote_sub": {
     "type": "lvl",
-    "unit": "2",
-    "dest": "A",
-    "level": "%+5",
-    "duration": "10",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "5",
     "wait": true
   },
   "chaster_pillory_vote": {
-    "type": "pro",
-    "profile": "E",
-    "level": 100,
-    "duration": "60",
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "20",
     "wait": true
   },
   "position": {
@@ -47,16 +48,15 @@
   },
   "move": {
     "type": "pro",
-    "profile": "J",
+    "profile": "D",
     "level": 100,
     "duration": "30",
     "wait": true
   },
   "sound": {
-    "type": "pro",
-    "profile": "J",
-    "level": 100,
-    "duration": "20",
-    "wait": true
+    "type": "multi",
+    "target": "all",
+    "prct": 20,
+    "rnd": true
   }
 }
