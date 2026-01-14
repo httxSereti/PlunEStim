@@ -28,6 +28,9 @@ kaleido = "0.2.1"
 discord-webhook = "*"
 playsound3 = "^3.2.3"
 mypy = "^1.16.0"
+fastapi = "^0.121.2"
+uvicorn = "^0.38.0"
+websockets = "^15.0.1"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

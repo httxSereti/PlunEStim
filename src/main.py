@@ -22,6 +22,11 @@ from functools import partial
 from threading import Thread
 from typing import Optional
 
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from typing import List
+from fastapi.responses import HTMLResponse
+
 import aiohttp
 import bluetooth  # type: ignore
 import dotenv
@@ -308,6 +313,34 @@ CHOICE_USAGE_ALL_RND.append('rnd multiple')
 # Power level selection
 CHOICE_POWER = {'Low': 'L', 'High': 'H'}
 
+#------------------
+# fastAPI
+#------------------
+app = FastAPI()
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+        
+    async def send_personal_message(self, message: dict):
+        await self.active_connections[0].send_json(message)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except:
+                self.disconnect(connection)
+
+manager = ConnectionManager()
 
 class UnitConnect:
     """
@@ -725,7 +758,6 @@ class Bot2b3(NextcordBot):
 
     def __init__(
         self,
-        profile: ProfileModule
     ):
         super().__init__(
             command_prefix="/", 
@@ -747,7 +779,6 @@ class Bot2b3(NextcordBot):
         self.logChannel: nextcord.abc.GuildChannel | None = None
         self.statusChannel: nextcord.abc.GuildChannel | None = None
         
-        self.profile: ProfileModule = profile
         self.chaster: Chaster = Chaster(self)
         self.notifier: Notifier = Notifier(self)
         
@@ -1778,6 +1809,16 @@ class Bot2b3(NextcordBot):
         
         Logger.info(f"Action received! {type_action}")
         # action parsed in the event
+        
+        await manager.broadcast({
+            "type": "event-trigger",
+            "payload": {
+                "type_action": type_action,
+                "origin_action": origin_action,
+                "event_time": event_time,
+            }
+        })
+            
 
         m = re.search('^wof_([A-Z])([A-Z,a-z])([A-Z,a-z])$', type_action)
         if m:
@@ -1930,7 +1971,7 @@ class Bot2b3(NextcordBot):
         """
         # pprint(action)
         # pprint(threads_settings)
-        Logger.info("{} action start".format(action['origine']))
+        Logger.info("{} action start\n".format(action['origine']))
         # Level update
         if action['type'] == 'lvl':
             for unit in await self.check_unit(None, action['unit']):
@@ -1951,6 +1992,17 @@ class Bot2b3(NextcordBot):
                     })
                     Logger.info("[Action] level for {} {} -> {}".format(threads_settings[unit][f'ch_{ch}_use'], old_val, new_val))
                     
+                    await manager.broadcast({
+                        "type": "level-update",
+                        "payload": {
+                            "electrode_name": threads_settings[unit][f'ch_{ch}_use'],
+                            "type": action['type'],
+                            "unit": unit,
+                            "channel": ch_name,
+                            "level_old": old_val,
+                            "level_new": new_val,
+                        }
+                    })
                     
             self.update_graph_status = 0
         # profile update
@@ -2622,7 +2674,6 @@ def sensor_check_val(sensor: str, measure: str, val: int) -> None:
     Returns:
 
     """
-
     # max value at 50
     sensors_settings[sensor]['current_' + measure] = min(round(val), 50)
 
@@ -2707,11 +2758,26 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
             sensor_check_val(sensor, 'move', 0)
             sensor_check_val(sensor, 'position', 0)
             
+        asyncio.create_task(manager.broadcast({
+            "type": "sensor-notification",
+            "payload": [
+                "Sensor '{}' is disconnected.".format(sensor)
+            ]
+        }))
+            
         disconnected_event.set()
 
     async with BleakClient(address, disconnected_callback=disconnected_callback) as client:
         Logger.info(f"[Sensors] {sensor} sensor is connected")
         sensors_settings[sensor]['sensor_online'] = True
+        
+        await manager.broadcast({
+            "type": "sensor-notification",
+            "payload": [
+                "Sensor '{}' is connected.".format(sensor)
+            ]
+        })
+        
         await client.start_notify(char_uuid, partial(sensor_notification, sensor))
         await disconnected_event.wait()
         # TODO: notify_here
@@ -2902,6 +2968,80 @@ def mk2b_init():
         }
         
     Logger.success(f"[UNITS] Initialized 2B initials settings for {len(BT_UNITS)} Units.")
+    
+bot = Bot2b3()
+
+# REST API
+def start_api():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+@app.get("/")
+async def api_home():
+    return {
+        "version": "1.0.0",
+        "app": "Plune"
+    }
+    
+@app.get("/sensors")
+async def sensors():
+    return sensors_settings
+
+@app.get("/units")
+async def units():
+    return threads_settings
+
+@app.get("/update")
+async def upd():
+    await bot.add_event_action(
+        'chaster_pillory_vote',
+        'pillory_chaster' + '_' + "lucie",
+        time.localtime()
+    )
+    await manager.broadcast({
+        "type": "sensor-notification",
+        "payload": ['sensor 1 updated']
+    })
+    return {"success": "OK"}
+
+# WebSocket API
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    
+    try:
+        # Send initial connection message
+        await websocket.send_json({
+            "type": "connected",
+            "message": "WebSocket connected successfully"
+        })
+        
+        # Heartbeat and message handling
+        while True:
+            try:
+                # Wait for messages from client with timeout
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=30
+                )
+                
+                pprint(data)
+                
+                # Handle client messages (e.g., commands)
+                if data.get("type") == "command":
+                    pprint(data)
+                    # command = DeviceCommand(**data.get("data"))
+                    # await device_manager.send_command(command)
+                    
+            except asyncio.TimeoutError:
+                # Send heartbeat ping
+                await websocket.send_json({"type": "ping"})
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+# bot
 
 if __name__ == '__main__':
     
@@ -2930,6 +3070,9 @@ if __name__ == '__main__':
 
     # status pic
     # threads['status_pic'] = Thread(target=thread_push_status_pic)
+    
+    # api
+    threads['api'] = Thread(target=start_api)
 
     # start all thread
     for tr in threads.keys():
@@ -2940,11 +3083,7 @@ if __name__ == '__main__':
     # start Discord Bot
     while True:
         try:
-            Logger.info("[Discord] Starting Discord Bot...")
-
-            bot = Bot2b3(
-                profile
-            )
+            Logger.info("[Discord] Loading Discord cogs...")
             
             # Try to load all the cogs
             for cog in get_cogs():
@@ -2956,9 +3095,10 @@ if __name__ == '__main__':
                     Logger.error(e)
                     print(e)
             
+            Logger.info("[Discord] Starting Discord Bot...")
             bot.run(DISCORD_TOKEN)
             
         except Exception as err:
             Logger.error(f'Restarting Discord bot after major error {err}')
-            time.sleep(10)
+            time.sleep(1000)
             continue
