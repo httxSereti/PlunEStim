@@ -84,8 +84,6 @@ BT_UNITS = ("UNIT1", "UNIT2", "UNIT3")
 
 # Bot config
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-STATUS_IMG_FILE = os.getenv('STATUS_IMG_FILE')
-DISCORD_STATUS_WEBHOOKS = os.getenv('DISCORD_STATUS_WEBHOOKS')
 
 # Default event config
 with open('configurations/event_action.json') as json_file:
@@ -800,7 +798,6 @@ class Bot2b3(NextcordBot):
         # pprint(self.queueActions)
         
         
-        self.update_graph_status = 0  # update the image of all units status
         self.previous_2B_sync = False  # previous global 2B sync
         
         self.chaster_lockid = None  # id of the current chaster lock
@@ -956,13 +953,6 @@ class Bot2b3(NextcordBot):
                         ))
                         # end
                     await interaction.response.send_message("\n".join(txt))
-
-        @self.slash_command(name='status',
-                            description='show bot pic status in the current channel')
-        async def bot_status(interaction: Interaction) -> None:
-            await interaction.response.send_message('status:')
-            await interaction.channel.send(files=[nextcord.File(STATUS_IMG_FILE)])
-            return None
 
         @self.slash_command(name='event_multi',
                             description='Associate event with level multiplier change')
@@ -1220,7 +1210,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['mode'] = mode_id
                         if MODE_2B[mode_id]['adj_2'] == '':  # reset to adj_1 for modes without adj_2
                             threads_settings[unit]['adj_2'] = threads_settings[unit]['adj_1']
-                    self.update_graph_status = 0
                     await interaction.response.send_message(
                         'new mode for unit {} is {}'.format(unit_arg, mode_arg))
             return None
@@ -1318,7 +1307,6 @@ class Bot2b3(NextcordBot):
                 if len(txt) == 0:
                     await interaction.response.send_message('There are no channel with this usage')
                 else:
-                    self.update_graph_status = 0
                     await interaction.response.send_message("\n".join(txt))
                 return None
 
@@ -1349,7 +1337,6 @@ class Bot2b3(NextcordBot):
             if len(txt) == 0:
                 await interaction.response.send_message('There are no channel with this usage')
             else:
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1406,7 +1393,6 @@ class Bot2b3(NextcordBot):
                                 new_val))
                             threads_settings[unit]['updated'] = True
                             threads_settings[unit][ch_name] = new_val
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1458,7 +1444,6 @@ class Bot2b3(NextcordBot):
                 if len(txt) == 0:
                     await interaction.response.send_message('There are no channel with this usage')
                 else:
-                    self.update_graph_status = 0
                     await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1502,7 +1487,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['power_bias'] = new_setting_val
                 await interaction.response.send_message(
                     'new power setting for unit {} is {}'.format(unit_arg, unit_setting))
-                self.update_graph_status = 0
             return None
 
         @bot_unit_set.subcommand(description='Change advanced timer setting')
@@ -1529,7 +1513,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['adj_3'] = new_setting_val
                     elif new_setting_type == 'W':
                         threads_settings[unit]['adj_4'] = new_setting_val
-                self.update_graph_status = 0
                 await interaction.response.send_message('new timer setting for unit {} is {}'
                                                         .format(unit_arg, unit_setting))
             return None
@@ -1590,7 +1573,6 @@ class Bot2b3(NextcordBot):
                     # reset to adj_1 for modes without adj_2
                     if MODE_2B[threads_settings[unit]['mode']]['adj_2'] == '':
                         threads_settings[unit]['adj_2_max'] = threads_settings[unit]['adj_1_max']
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1692,7 +1674,6 @@ class Bot2b3(NextcordBot):
                             threads_settings[unit][ch] = 0
                             threads_settings[unit][ch + '_max'] = 0
                     await interaction.response.send_message('stop all channels')
-                    self.update_graph_status = 0
             return None
 
         # ----- RAMP COMMANDS ------
@@ -1737,7 +1718,6 @@ class Bot2b3(NextcordBot):
                     if ramp_prct_arg < 100:
                         threads_settings[unit][target_arg + '_ramp_phase'] = phase_arg
                         threads_settings[unit][target_arg + '_ramp_prct'] = ramp_prct_arg
-                self.update_graph_status = 0
                 await interaction.response.send_message("Software ramp adjusted")
             return None
 
@@ -2004,7 +1984,6 @@ class Bot2b3(NextcordBot):
                         }
                     })
                     
-            self.update_graph_status = 0
         # profile update
         elif action['type'] == 'pro':
             if action['profile'] == 'X':
@@ -2041,8 +2020,6 @@ class Bot2b3(NextcordBot):
                                 threads_settings[bck_bt_name][field] = min(100, max(0, new_val))
                             else:
                                 threads_settings[bck_bt_name][field] = bck_settings[bck_bt_name][field]
-
-        self.update_graph_status = 0
 
     # BT sensors polling for new alarm
     async def bt_sensor_alarm(self):
@@ -2378,290 +2355,6 @@ class Bot2b3(NextcordBot):
     # cmd arg errors
     async def on_command_error(self, context, exception):
         logger.error(str(exception))
-
-
-def build_status_pic():
-    """
-    build the pic with all gauges about units settings
-    Returns:
-
-    """
-
-    def unit_status_color(unit_name):
-        color = "green"
-        if not threads_settings[unit_name]['sync']:
-            color = "yellow"
-        if not threads_settings[unit_name]['cnx_ok']:
-            color = "red"
-        return color
-
-    def delta_display_type(unit_name, ch):
-        if threads_settings[unit_name][ch + '_ramp_prct'] < 100:
-            return "gauge+number+delta"
-        else:
-            return "gauge+number"
-
-    def sensor_color(sensor):
-        color = "red"
-        if sensors_settings[sensor]['sensor_online']:
-            if sensors_settings[sensor]['alarm_enable']:
-                color = "green"
-            else:
-                color = "gray"
-        return color
-
-    def delta_info(unit_name, ch):
-        delta_dict = {}
-        delta_dict['reference'] = int(
-            threads_settings[unit_name][ch] + threads_settings[unit_name][ch + '_max'] *
-            threads_settings[unit_name][ch + '_ramp_prct'] / 100
-        )
-        if threads_settings[unit_name][ch + '_ramp_prct'] < 100:
-            delta_dict['decreasing'] = {'color': 'green'}
-        return delta_dict
-
-    def unit_level_txt(unit_name):
-        if threads_settings[unit_name]['level_d']:
-            level_txt = CHECK_ARG['POWER_BIAS'][threads_settings[unit_name]['power_bias']]
-        elif threads_settings[unit_name]['level_h']:
-            level_txt = 'H'
-        else:
-            level_txt = 'L'
-        level_txt = level_txt + chr(threads_settings[unit_name]['level_map'] + ord('a'))
-        return level_txt
-
-    Logger.info('Building Status Picture..')
-    indicators = []  # array of all graphs
-    for unit_name in BT_UNITS:
-        # --- Unit info
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int(unit_name[-1]),
-            title={"text": "{mode}".format(mode=MODE_2B[threads_settings[unit_name]['mode']]['id']),
-                   "font": {"size": 10}},
-            number={'suffix': unit_level_txt(unit_name), "font": {"color": unit_status_color(unit_name)}})
-        )
-        # -- Channel Info
-        for ch in ('ch_A', 'ch_B'):
-            # Level
-            usage = threads_settings[unit_name][ch + '_use']
-            indicators.append(go.Indicator(
-                mode=delta_display_type(unit_name, ch),
-                value=threads_settings[unit_name][ch],
-                title={'text': ch[-1] + ':' + threads_settings[unit_name][ch + '_use'], "font": {"size": 11}},
-                delta=delta_info(unit_name, ch),
-                gauge={
-                    'axis': {'range': [0, 100], 'visible': False},
-                    'bar': {'color': 'black'},
-                    'steps': [
-                        {'range': [0, USAGE_LIMIT[usage]['start']],
-                         'color': "lightgray"},
-                        {'range': [USAGE_LIMIT[usage]['start'],
-                                   USAGE_LIMIT[usage]['warn']], 'color': "lightgreen"},
-                        {'range': [USAGE_LIMIT[usage]['warn'],
-                                   USAGE_LIMIT[usage]['max']], 'color': "yellow"},
-                        {'range': [USAGE_LIMIT[usage]['max'], 100], 'color': "red"}],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 2},
-                        'thickness': 0.55,
-                        'value': threads_settings[unit_name][ch + '_max']}
-                }
-            ))
-        # -- Adjuts info
-        for ch in ('adj_1', 'adj_2'):
-            indicators.append(
-                go.Indicator(mode=delta_display_type(unit_name, ch), value=threads_settings[unit_name][ch],
-                             title={'text': MODE_2B[threads_settings[unit_name]['mode']][ch],
-                                    "font": {"size": 11}},
-                             delta=delta_info(unit_name, ch),
-                             gauge={
-                                 'axis': {'range': [0, 100], 'visible': False},
-                                 'bar': {'color': 'black'},
-                                 'steps': [
-                                     {'range': [0, 100], 'color': "lightgray"}
-                                 ],
-                                 'threshold': {
-                                     'line': {'color': "black", 'width': 2},
-                                     'thickness': 0.75,
-                                     'value': threads_settings[unit_name][ch + '_max']}
-                             }))
-        # -- multiplier Info
-        for ch in ('ch_A', 'ch_B'):
-            # Multiplier
-            # -- 2B Ramp speed
-            indicators.append(go.Indicator(
-                mode="number",
-                value=int(threads_settings[unit_name][ch + '_multiplier']),
-                title={"text": "multi<br>" + ch, "font": {"size": 9}},
-                number={'suffix': "%", "font": {"size": 10}}
-            )
-            )
-        # --- Ramp duration
-        if threads_settings[unit_name]['ramp_time'] == 0:
-            ramp_mode = 'disable'
-        else:
-            if threads_settings[unit_name]['ramp_wave']:
-                ramp_mode = 'Wave'
-            else:
-                ramp_mode = 'Ramp'
-        indicators.append(go.Indicator(
-            mode="number",
-            value=threads_settings[unit_name]['ramp_time'],
-            title={"text": "cycle<br>{}".format(ramp_mode),
-                   "font": {"size": 10}},
-            number={'suffix': 's', "font": {"size": 9}})
-        )
-        # -- 2B Ramp speed
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int((CHECK_ARG['RAMP_SPEED'][threads_settings[unit_name]['adj_3']])[1:]),
-            title={"text": "2B ramp<br>speed", "font": {"size": 9}},
-            number={'prefix': "x", "font": {"size": 14}}
-        )
-        )
-        # -- Wrap time factor
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int((CHECK_ARG['WRAP_FACTOR'][threads_settings[unit_name]['adj_4']])[1:]),
-            title={"text": "wrap<br>timer", "font": {"size": 9}},
-            number={'prefix': "x", "font": {"size": 14}}
-        )
-        )
-
-    # Empty
-    indicators.append(None)
-    # Motion sensors value
-    for sensor in ('motion1', 'motion2'):
-        for ch in ('position', 'move'):
-            indicators.append(go.Indicator(
-                mode="gauge+number",
-                value=sensors_settings[sensor]['current_' + ch],
-                title={'text': ch + sensor[-1], "font": {"size": 11, "color": sensor_color(sensor)}},
-                gauge={  #
-                    'axis': {'range': [0, 50], 'visible': False},
-                    'bar': {'color': 'black'},
-                    'steps': [
-                        {'range': [0, sensors_settings[sensor][ch + '_alarm_level']], 'color': "lightgray"},
-                        {'range': [sensors_settings[sensor][ch + '_alarm_level'], 50], 'color': "red"}]
-                }
-            ))
-
-    # sound sensors
-    indicators.append(go.Indicator(
-        mode="gauge+number",
-        value=sensors_settings['sound']['current_sound'],
-        title={'text': 'sound', "font": {"size": 11, "color": sensor_color('sound')}},
-        gauge={  #
-            'axis': {'range': [0, 50], 'visible': False},
-            'bar': {'color': 'black'},
-            'steps': [
-                {'range': [0, sensors_settings['sound']['sound_alarm_level']], 'color': "lightgray"},
-                {'range': [sensors_settings['sound']['sound_alarm_level'], 50], 'color': "red"}]
-        }))
-
-    # Empty
-    indicators.append(None)
-    # queue done
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['done'],
-        title={"text": "done", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-    # queue size
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['waiting'],
-        title={"text": "queued", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-    # running size
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['running'],
-        title={"text": "run", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-
-    Logger.info('Creating Pic')
-    # pprint(indicators)
-    # ---build pic
-    fig = make_subplots(
-        rows=4,
-        cols=10,
-        column_widths=[0.10, 0.2, 0.2, 0.2, 0.2, 0.08, 0.08, 0.08, 0.08, 0.08],
-        specs=[
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [None, {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator', "colspan": 2}, None,
-             {'type': 'indicator'}, {'type': 'indicator'}, {'type': 'indicator'}]]
-    )
-    for x in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10):
-        for y in (1, 2, 3, 4):
-            if indicators[(y - 1) * 10 + x - 1]:
-                fig.add_trace(indicators[(y - 1) * 10 + x - 1], row=y, col=x)
-                
-    fig['layout'].update(
-        width=500,
-        height=300,
-        showlegend=False,
-        margin=dict(l=5, r=5, t=10, b=5),
-    )
-    
-    Logger.info('Writing Pic')
-    
-    try:
-        fig.write_image('status.jpeg')
-    except Exception as err:
-        print(err)
-    Logger.info('Writed Pic')
-    
-
-
-def thread_push_status_pic():
-    """
-    Update the status in bot status and publish graph with all settings
-    Returns:
-
-    """
-    update_graph_status = 10
-    last_id = None
-    while True:
-        try:
-            time.sleep(0.5)
-            if update_graph_status < 1:
-                # new pic status
-                build_status_pic()
-                # remove previous
-                if last_id:
-                    webhook = DiscordWebhook(url=DISCORD_STATUS_WEBHOOKS, rate_limit_retry=True, username="bot status", id=last_id)
-                    webhook.delete()
-                # upload
-                webhook = DiscordWebhook(url=DISCORD_STATUS_WEBHOOKS, rate_limit_retry=True, username="bot status")
-                with open(STATUS_IMG_FILE, "rb") as f:
-                    webhook.add_file(file=f.read(), filename=f'status.jpg')
-                webhook.execute()
-                last_id = webhook.id
-                update_graph_status = 20  # minimal refresh
-            else:
-                update_graph_status = update_graph_status - 1
-        except Exception as err:
-            Logger.info(f"Thread error in push_status_pic {err=}, {type(err)=}")
-            print(err)
-            time.sleep(30)
-
 
 def sensor_check_val(sensor: str, measure: str, val: int) -> None:
     """
@@ -3068,9 +2761,6 @@ if __name__ == '__main__':
     # init threads for software ramp
     threads['ramp'] = Thread(target=thread_update_ramp)
 
-    # status pic
-    # threads['status_pic'] = Thread(target=thread_push_status_pic)
-    
     # api
     threads['api'] = Thread(target=start_api)
 
