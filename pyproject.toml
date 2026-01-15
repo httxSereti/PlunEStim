@@ -2,6 +2,7 @@
 name = "pes-bot"
 version = "1.0.1"
 description = "Discord Bot to manage your EStim devices and sessions."
+requires-python = "==3.12.6"
 authors = [
     { name = "graviky" },
     { name = "deLulu" },
@@ -10,7 +11,6 @@ dependencies = [
     "nextcord==3.1.0",
     "pyttsx3",
     "python-dotenv",
-    "plotly",
     "requests",
     "pybluez",
     "bleak",

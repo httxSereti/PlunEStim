@@ -18,6 +18,7 @@ import random
 import re
 import time
 import traceback
+import uuid
 from functools import partial
 from threading import Thread
 from typing import Optional
@@ -31,7 +32,6 @@ import aiohttp
 import bluetooth  # type: ignore
 import dotenv
 import nextcord
-import plotly.graph_objs as go  # type: ignore
 import serial.tools.list_ports  # type: ignore
 
 from bleak import BleakClient
@@ -40,7 +40,6 @@ from nextcord import Interaction, SlashOption
 from nextcord.ext.commands import Bot as NextcordBot
 from nextcord.ext import commands
 from nextcord.ext import tasks
-from plotly.subplots import make_subplots  # type: ignore
 
 from pprint import pprint
 
@@ -52,6 +51,8 @@ from typings import *
 from services.chaster import *
 from services.notifier import *
 from utils import *
+
+from store.store import Store
 
 # load env
 dotenv.load_dotenv('config.env')
@@ -210,6 +211,9 @@ handler_nextcord = logging.FileHandler(filename='nextcord.log', encoding='utf-8'
 handler_nextcord.setFormatter(logging.Formatter('[%(asctime)s]%(levelname)s:%(name)s: %(message)s'))
 logger_nextcord.addHandler(handler_nextcord)
 
+# init Store
+store = Store()
+
 # init multi threading
 sensors_settings = {}
 threads_settings = {}
@@ -315,30 +319,6 @@ CHOICE_POWER = {'Low': 'L', 'High': 'H'}
 # fastAPI
 #------------------
 app = FastAPI()
-
-# WebSocket connection manager
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-        
-    async def send_personal_message(self, message: dict):
-        await self.active_connections[0].send_json(message)
-
-    async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except:
-                self.disconnect(connection)
-
-manager = ConnectionManager()
 
 class UnitConnect:
     """
@@ -1790,7 +1770,7 @@ class Bot2b3(NextcordBot):
         Logger.info(f"Action received! {type_action}")
         # action parsed in the event
         
-        await manager.broadcast({
+        await store.websocket.broadcast({
             "type": "event-trigger",
             "payload": {
                 "type_action": type_action,
@@ -1972,7 +1952,7 @@ class Bot2b3(NextcordBot):
                     })
                     Logger.info("[Action] level for {} {} -> {}".format(threads_settings[unit][f'ch_{ch}_use'], old_val, new_val))
                     
-                    await manager.broadcast({
+                    await store.websocket.broadcast({
                         "type": "level-update",
                         "payload": {
                             "electrode_name": threads_settings[unit][f'ch_{ch}_use'],
@@ -2451,7 +2431,7 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
             sensor_check_val(sensor, 'move', 0)
             sensor_check_val(sensor, 'position', 0)
             
-        asyncio.create_task(manager.broadcast({
+        asyncio.create_task(store.websocket.broadcast({
             "type": "sensor-notification",
             "payload": [
                 "Sensor '{}' is disconnected.".format(sensor)
@@ -2464,7 +2444,7 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
         Logger.info(f"[Sensors] {sensor} sensor is connected")
         sensors_settings[sensor]['sensor_online'] = True
         
-        await manager.broadcast({
+        await store.websocket.broadcast({
             "type": "sensor-notification",
             "payload": [
                 "Sensor '{}' is connected.".format(sensor)
@@ -2680,8 +2660,9 @@ async def sensors():
     return sensors_settings
 
 @app.get("/units")
-async def units():
-    return threads_settings
+async def units():    
+    return store.get_all_units_settings()
+    # return threads_settings
 
 @app.get("/update")
 async def upd():
@@ -2690,16 +2671,19 @@ async def upd():
         'pillory_chaster' + '_' + "lucie",
         time.localtime()
     )
-    await manager.broadcast({
+    await store.websocket.broadcast({
         "type": "sensor-notification",
         "payload": ['sensor 1 updated']
     })
+    
     return {"success": "OK"}
 
 # WebSocket API
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    client_id = str(uuid.uuid4()) # for the moment waiting for jwt
+    
+    await store.websocket.connect(client_id, websocket)
     
     try:
         # Send initial connection message
@@ -2723,23 +2707,23 @@ async def websocket_endpoint(websocket: WebSocket):
                 if data.get("type") == "command":
                     pprint(data)
                     # command = DeviceCommand(**data.get("data"))
-                    # await device_manager.send_command(command)
+                    # await device_store.websocket.send_command(command)
                     
             except asyncio.TimeoutError:
                 # Send heartbeat ping
                 await websocket.send_json({"type": "ping"})
                 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        store.websocket.disconnect(websocket)
     except Exception as e:
         print(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
+        store.websocket.disconnect(websocket)
 # bot
 
 if __name__ == '__main__':
     
     Logger.info("Starting PlunEStim 1.0.0")
-    
+
     threads = {}
     
     # Profiles Module
