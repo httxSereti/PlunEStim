@@ -53,6 +53,7 @@ from services.notifier import *
 from utils import *
 
 from store.store import Store
+from models.User import User
 
 # load env
 dotenv.load_dotenv('config.env')
@@ -2659,6 +2660,11 @@ async def api_home():
 async def sensors():
     return sensors_settings
 
+@app.get("/users")
+async def users():    
+    return store.get_all_users()
+    # return threads_settings
+
 @app.get("/units")
 async def units():    
     return store.get_all_units_settings()
@@ -2691,6 +2697,13 @@ async def websocket_endpoint(websocket: WebSocket):
             "type": "connected",
             "message": "WebSocket connected successfully"
         })
+        
+        user = User(
+            id=client_id,
+            display_name="",
+        )
+        
+        store.add_user(user)
         
         # Heartbeat and message handling
         while True:

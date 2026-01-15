@@ -1,6 +1,8 @@
 import threading
-from typing import Dict  
+from typing import Dict, Optional
 from datetime import datetime
+
+from models.User import User
 
 from api.ws.websocket_manager import WebSocketManager
 from typings import UnitDict
@@ -34,6 +36,7 @@ class Store:
                     UnitDict.UNIT3.value: {}
                 }
                 self._sensors_settings: Dict = {}
+                self._users: Dict[str, User] = {}
                 self._websocket = WebSocketManager()
 
                 # separated lock for better concurrency
@@ -117,6 +120,25 @@ class Store:
         with self._sensors_lock:
             self._sensors_settings.clear()
 
+    """
+        User Functions
+"""
+    def add_user(self, user: User):
+        with self._users_lock:
+            self._users[user.id] = user
+    
+    def get_user(self, user_id: str) -> Optional[User]:
+        with self._users_lock:
+            return self._users.get(user_id)
+    
+    def remove_user(self, user_id: str):
+        with self._users_lock:
+            self._users.pop(user_id, None)
+    
+    def get_all_users(self) -> Dict[str, User]:
+        with self._users_lock:
+            return self._users.copy()
+    
     @property
     def websocket(self) -> WebSocketManager:
         return self._websocket
