@@ -1,21 +1,14 @@
-import threading
 from typing import Dict, Optional, Set
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
-from cuid2 import Cuid
 
-from typings import Role, Permission
-
-CUID_GENERATOR: Cuid = Cuid(length=42)
+from typings import Role, Permission, ROLE_PERMISSIONS
 
 @dataclass
 class User:
     id: str
-    username: str
-    display_name: str
-    
-    magic_token: str = CUID_GENERATOR.generate()
+    display_name: Optional[str]
+    magic_token: str
     is_online: bool = False
     
     created_at: datetime = field(default_factory=datetime.now)

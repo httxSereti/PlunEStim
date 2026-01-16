@@ -1,20 +1,20 @@
 import threading
 from typing import Dict, Optional, Set
-from datetime import datetime
 
 from models.User import User
 
 from api.ws.websocket_manager import WebSocketManager
 from typings import UnitDict, Role, Permission
 
+
 class Store:
     """
     Singleton thread-safe to store variables
     """
-    
+
     _instance = None
     _lock = threading.Lock()
-    
+
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
@@ -23,17 +23,17 @@ class Store:
                     cls._instance = super().__new__(cls)
                     cls._instance._initialized = False
         return cls._instance
-    
+
     def __init__(self):
         if self._initialized:
             return
-        
+
         with self._lock:
             if not self._initialized:
                 self._units_settings: Dict[str, Dict] = {
                     UnitDict.UNIT1.value: {},
                     UnitDict.UNIT2.value: {},
-                    UnitDict.UNIT3.value: {}
+                    UnitDict.UNIT3.value: {},
                 }
                 self._sensors_settings: Dict = {}
                 self._users: Dict[str, User] = {}
@@ -43,79 +43,79 @@ class Store:
                 self._units_lock = threading.RLock()
                 self._sensors_lock = threading.RLock()
                 self._users_lock = threading.RLock()
-                
+
                 self._initialized = True
 
     """
         Units Functions
     """
-    
+
     def get_unit_setting(self, unit_dict: UnitDict, key: str, default=None):
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
                 return default
             return self._units_settings[dict_name].get(key, default)
-    
+
     def set_unit_setting(self, unit_dict: UnitDict, key: str, value):
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
                 raise KeyError(f"Dictionary '{dict_name}' doesn't exist.")
             self._units_settings[dict_name][key] = value
-    
+
     def get_unit_dict(self, unit_dict: UnitDict) -> Dict:
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
                 return {}
             return self._units_settings[dict_name].copy()
-    
+
     def update_unit_dict(self, unit_dict: UnitDict, settings: Dict):
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
                 raise KeyError(f"Dictionary '{dict_name}' doesn't exist.")
             self._units_settings[dict_name].update(settings)
-    
+
     def get_all_units_settings(self) -> Dict[str, Dict]:
         with self._units_lock:
             return {
-                name: dict_content.copy() 
+                name: dict_content.copy()
                 for name, dict_content in self._units_settings.items()
             }
-    
+
     def clear_unit_dict(self, unit_dict: UnitDict):
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name in self._units_settings:
                 self._units_settings[dict_name].clear()
-    
+
     def clear_units_settings(self):
         with self._units_lock:
             for dict_content in self._units_settings.values():
-                dict_content.clear()   
-    
+                dict_content.clear()
+
     """
         Sensors Functions
     """
-                
+
     def get_sensor_setting(self, key: str, default=None):
         with self._sensors_lock:
             return self._sensors_settings.get(key, default)
-    
+
     def set_sensor_setting(self, key: str, value):
         with self._sensors_lock:
             self._sensors_settings[key] = value
-    
+
     def update_sensors_settings(self, settings: Dict):
         with self._sensors_lock:
             self._sensors_settings.update(settings)
-    
+
     def get_all_sensors_settings(self) -> Dict:
         with self._sensors_lock:
             return self._sensors_settings.copy()
-    
+
     def clear_sensors_settings(self):
         with self._sensors_lock:
             self._sensors_settings.clear()
@@ -123,59 +123,57 @@ class Store:
     """
         User Functions
     """
-    
+
     def add_user(self, user: User):
         with self._users_lock:
             self._users[user.id] = user
-    
+
     def get_user(self, user_id: str) -> Optional[User]:
         with self._users_lock:
             return self._users.get(user_id)
-    
+
     def remove_user(self, user_id: str):
         with self._users_lock:
             self._users.pop(user_id, None)
-    
+
     def get_all_users(self) -> Dict[str, User]:
         with self._users_lock:
             return self._users.copy()
-        
+
     """
         User Roles/Permissions Functions
     """
-        
+
     def set_user_role(self, user_id: str, role: Role):
         with self._users_lock:
             user = self._users.get(user_id)
             if user:
                 user.role = role
-    
+
     def add_user_permission(self, user_id: str, permission: Permission):
         with self._users_lock:
             user = self._users.get(user_id)
             if user:
                 user.custom_permissions.add(permission)
-    
+
     def remove_user_permission(self, user_id: str, permission: Permission):
         with self._users_lock:
             user = self._users.get(user_id)
             if user:
                 user.custom_permissions.discard(permission)
-    
+
     def check_permission(self, user_id: str, permission: Permission) -> bool:
         with self._users_lock:
             user = self._users.get(user_id)
-            if not user or not user.is_active:
-                return False
             return user.has_permission(permission)
-    
+
     def get_user_permissions(self, user_id: str) -> Set[Permission]:
         with self._users_lock:
             user = self._users.get(user_id)
             if user:
                 return user.get_permissions()
             return set()
-    
+
     def require_permission(self, user_id: str, permission: Permission):
         if not self.check_permission(user_id, permission):
             user = self.get_user(user_id)
@@ -183,8 +181,7 @@ class Store:
             raise PermissionError(
                 f"User '{display_name}' doesn't have permission: {permission.value}"
             )
-    
-    
+
     @property
     def websocket(self) -> WebSocketManager:
         return self._websocket

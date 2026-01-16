@@ -25,8 +25,6 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from typing import List
-from fastapi.responses import HTMLResponse
 
 import aiohttp
 import bluetooth  # type: ignore
@@ -35,10 +33,8 @@ import nextcord
 import serial.tools.list_ports  # type: ignore
 
 from bleak import BleakClient
-from discord_webhook import DiscordWebhook # type: ignore
 from nextcord import Interaction, SlashOption
 from nextcord.ext.commands import Bot as NextcordBot
-from nextcord.ext import commands
 from nextcord.ext import tasks
 
 from pprint import pprint
@@ -54,6 +50,10 @@ from utils import *
 
 from store import Store
 from models.User import User
+
+from utils.users.generate_root_access import generate_root_access
+
+from api.rest import users, auth
 
 # load env
 dotenv.load_dotenv('config.env')
@@ -219,9 +219,10 @@ store = Store()
 # fastAPI
 #------------------
 
-from api.rest import users
+
 app = FastAPI()
 app.include_router(users.router)
+app.include_router(auth.router)
 
 # init multi threading
 sensors_settings = {}
@@ -2763,6 +2764,9 @@ if __name__ == '__main__':
         Logger.warning(f"[Main] Starting thread '{tr}'!")
         threads[tr].daemon = True
         threads[tr].start()
+        
+    # create root and redirect host to it
+    generate_root_access()
 
     # start Discord Bot
     while True:
