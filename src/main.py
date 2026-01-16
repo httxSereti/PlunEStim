@@ -52,7 +52,7 @@ from services.chaster import *
 from services.notifier import *
 from utils import *
 
-from store.store import Store
+from store import Store
 from models.User import User
 
 # load env
@@ -215,6 +215,14 @@ logger_nextcord.addHandler(handler_nextcord)
 # init Store
 store = Store()
 
+#------------------
+# fastAPI
+#------------------
+
+from api.rest import users
+app = FastAPI()
+app.include_router(users.router)
+
 # init multi threading
 sensors_settings = {}
 threads_settings = {}
@@ -315,12 +323,6 @@ CHOICE_USAGE_ALL_RND.append('rnd')
 CHOICE_USAGE_ALL_RND.append('rnd multiple')
 # Power level selection
 CHOICE_POWER = {'Low': 'L', 'High': 'H'}
-
-#------------------
-# fastAPI
-#------------------
-app = FastAPI()
-
 class UnitConnect:
     """
  Manage the connexion to the 2B unit with the serial over BT
@@ -2660,14 +2662,9 @@ async def api_home():
 async def sensors():
     return sensors_settings
 
-@app.get("/users")
-async def users():    
-    return store.get_all_users()
-    # return threads_settings
-
 @app.get("/units")
 async def units():    
-    return store.get_all_units_settings()
+    return threads_settings
     # return threads_settings
 
 @app.get("/update")
