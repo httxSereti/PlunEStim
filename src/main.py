@@ -53,7 +53,7 @@ from models.User import User
 
 from utils.users.generate_root_access import generate_root_access
 
-from api.rest import users, auth
+from api.rest import users, auth, admin
 
 # load env
 dotenv.load_dotenv('config.env')
@@ -223,6 +223,7 @@ store = Store()
 app = FastAPI()
 app.include_router(users.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 
 # init multi threading
 sensors_settings = {}
