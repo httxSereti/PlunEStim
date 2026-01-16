@@ -24,6 +24,7 @@ dependencies = [
     "fastapi>=0.121.2,<0.122",
     "uvicorn>=0.38.0,<0.39",
     "websockets>=15.0.1,<16",
+    "cuid2>=2.0.1",
 ]
 
 [tool.uv]

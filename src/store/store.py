@@ -1,11 +1,11 @@
 import threading
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 from datetime import datetime
 
 from models.User import User
 
 from api.ws.websocket_manager import WebSocketManager
-from typings import UnitDict
+from typings import UnitDict, Role, Permission
 
 class Store:
     """
@@ -122,7 +122,8 @@ class Store:
 
     """
         User Functions
-"""
+    """
+    
     def add_user(self, user: User):
         with self._users_lock:
             self._users[user.id] = user
@@ -138,6 +139,51 @@ class Store:
     def get_all_users(self) -> Dict[str, User]:
         with self._users_lock:
             return self._users.copy()
+        
+    """
+        User Roles/Permissions Functions
+    """
+        
+    def set_user_role(self, user_id: str, role: Role):
+        with self._users_lock:
+            user = self._users.get(user_id)
+            if user:
+                user.role = role
+    
+    def add_user_permission(self, user_id: str, permission: Permission):
+        with self._users_lock:
+            user = self._users.get(user_id)
+            if user:
+                user.custom_permissions.add(permission)
+    
+    def remove_user_permission(self, user_id: str, permission: Permission):
+        with self._users_lock:
+            user = self._users.get(user_id)
+            if user:
+                user.custom_permissions.discard(permission)
+    
+    def check_permission(self, user_id: str, permission: Permission) -> bool:
+        with self._users_lock:
+            user = self._users.get(user_id)
+            if not user or not user.is_active:
+                return False
+            return user.has_permission(permission)
+    
+    def get_user_permissions(self, user_id: str) -> Set[Permission]:
+        with self._users_lock:
+            user = self._users.get(user_id)
+            if user:
+                return user.get_permissions()
+            return set()
+    
+    def require_permission(self, user_id: str, permission: Permission):
+        if not self.check_permission(user_id, permission):
+            user = self.get_user(user_id)
+            display_name = user.display_name if user else "Unknown"
+            raise PermissionError(
+                f"User '{display_name}' doesn't have permission: {permission.value}"
+            )
+    
     
     @property
     def websocket(self) -> WebSocketManager:
