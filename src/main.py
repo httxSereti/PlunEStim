@@ -62,7 +62,7 @@ dotenv.load_dotenv('config.env')
 
 # DEBUG setting
 ENABLE_MK2BT = False  # Disable mk2bt thread
-ENABLE_BT_SENSORS = False  # Disable BT sensors thread
+ENABLE_BT_SENSORS = True  # Disable BT sensors thread
 
 # API change
 intents = nextcord.Intents.default()
@@ -237,7 +237,6 @@ app.add_middleware(
 )
 
 # init multi threading
-sensors_settings = {}
 threads_settings = {}
 
 # Slash_Command constantes
@@ -812,7 +811,7 @@ class Bot2b3(NextcordBot):
             backup_data = {
                 'EVENT_ACTION': EVENT_ACTION,
                 'threads_settings': threads_settings,
-                'sensors_settings': sensors_settings,
+                'sensors_settings': store.get_all_sensors_settings(),
                 'USAGE_LIMIT': USAGE_LIMIT
             }
             filename = filename + '.json'
@@ -822,9 +821,14 @@ class Bot2b3(NextcordBot):
             await interaction.response.send_message("backup done")
 
         @self.slash_command(name='restore', description='Restore bot config')
-        async def bot_recover(interaction: Interaction,
-                              filename: str = SlashOption(name='name', description='backup_name',
-                                                          required=True)) -> None:
+        async def bot_recover(
+            interaction: Interaction,
+            filename: str = SlashOption(
+                name='name',
+                description='backup_name',
+                required=True
+            )
+        ) -> None:
             filename = filename + '.json'
             bck_file = open(DIR_BACKUP / filename, 'r')
             backup_data = json.load(bck_file)
@@ -840,11 +844,26 @@ class Bot2b3(NextcordBot):
                         threads_settings[bck_bt_name][field] = True
                     else:
                         threads_settings[bck_bt_name][field] = backup_data['threads_settings'][bck_bt_name][field]
-            # sensor
-            for sensor in backup_data['sensors_settings'].keys():
-                for field in backup_data['sensors_settings'][sensor].keys():
+
+            # restore Sensors
+            for sensor_name in backup_data['sensors_settings'].keys():
+                
+                # fetch current sensor configuration
+                current_sensor_config = store.get_sensor_setting(sensor_name)
+                
+                # no sensor, so init it
+                if current_sensor_config is None:
+                    current_sensor_config = {}
+                
+                # explore fields
+                for field in backup_data['sensors_settings'][sensor_name].keys():
+                    # restore only these
                     if re.search(r"(_alarm_level|_delay_on|_delay_off)", field):
-                        sensors_settings[sensor][field] = backup_data['sensors_settings'][sensor][field]
+                        current_sensor_config[field] = backup_data['sensors_settings'][sensor_name][field]
+                
+                # Save
+                store.set_sensor_setting(sensor_name, current_sensor_config)
+                            
             # limit
             for usage in backup_data['USAGE_LIMIT']:
                 USAGE_LIMIT[usage] = backup_data['USAGE_LIMIT'][usage]
@@ -1592,7 +1611,7 @@ class Bot2b3(NextcordBot):
         async def display(
             interaction: Interaction
         ) -> None:
-            await interaction.response.send_message(embed=EmbedSensorConfiguration(sensors_settings))
+            await interaction.response.send_message(embed=EmbedSensorConfiguration(store.get_all_sensors_settings()))
             return None
 
         @bot_sensors.subcommand(description='Activate sensor alarm')
@@ -1621,7 +1640,12 @@ class Bot2b3(NextcordBot):
                     await asyncio.sleep(arg_delay)
                 else:
                     await interaction.response.send_message('Sensor {} alarm is set'.format(arg_sensor))
-                sensors_settings[arg_sensor]['alarm_enable'] = bool(arg_enable)
+                    
+                # fetch and update sensor
+                new_sensor_settings = store.get_sensor_setting(arg_sensor)
+                new_sensor_settings['alarm_enable'] = bool(arg_enable)
+                store.set_sensor_setting(arg_sensor, new_sensor_settings)
+                
             return None
 
         @bot_sensors.subcommand(description='Adjust sensors configuration')
@@ -1648,10 +1672,14 @@ class Bot2b3(NextcordBot):
                 sensor = arg_type.split(',')
                 if arg_mode == 'level':
                     if await self.check_sensor_level(interaction, arg_level) > 0:
-                        sensors_settings[sensor[0]][sensor[1] + '_alarm_level'] = arg_level
+                        new_sensor_settings = store.get_sensor_setting(sensor[0])
+                        new_sensor_settings[sensor[1] + '_alarm_level'] = arg_level
+                        store.set_sensor_setting(sensor[0], new_sensor_settings)
                         await interaction.response.send_message('New level is set')
                 elif await self.check_sensor_duration(interaction, arg_level) > 0:
-                    sensors_settings[sensor[0]][sensor[1] + '_delay_' + arg_mode] = arg_level
+                    new_sensor_settings = store.get_sensor_setting(sensor[0])
+                    new_sensor_settings[sensor[1] + '_delay_' + arg_mode] = arg_level
+                    store.set_sensor_setting(sensor[0], new_sensor_settings)
                     await interaction.response.send_message('New duration is set')
             return None
 
@@ -2028,19 +2056,22 @@ class Bot2b3(NextcordBot):
 
         """
         # loop by sensor
-        for sensor in sorted(sensors_settings.keys()):
+        for sensor_name in sorted(store.get_all_sensors_settings().keys()):
+            current_sensor_settings = store.get_sensor_setting(sensor_name)
+            
             # loop by value from the sensor
-            for field in sorted(sensors_settings[sensor].keys()):
+            for field in sorted(current_sensor_settings.keys()):
                 # find the name of the sensor from the config
                 if m := re.match(r"^(\w+)_alarm_number$", field):
                     value = m[1]
                     # check if the alarm counter have changed
-                    if sensors_settings[sensor][value + '_alarm_number'] != sensors_settings[sensor][value + '_alarm_number_action']:
-                        sensors_settings[sensor][value + '_alarm_number_action'] = sensors_settings[sensor][value + '_alarm_number']
+                    if current_sensor_settings[value + '_alarm_number'] != current_sensor_settings[value + '_alarm_number_action']:
+                        current_sensor_settings[value + '_alarm_number_action'] = current_sensor_settings[value + '_alarm_number']
+                        store.set_sensor_setting(sensor_name, current_sensor_settings)
                         # if alarm is active, add event in queue
-                        if EVENT_ACTION[value] and sensors_settings[sensor]['alarm_enable']:
-                            Logger.warning(f'[Sensor] Alarm! "{sensor}" Sensor fired!')
-                            await self.add_event_action(value, sensor + ' BT sensor ' + value + str(sensors_settings[sensor][value + '_alarm_number_action']), time.localtime())
+                        if EVENT_ACTION[value] and current_sensor_settings['alarm_enable']:
+                            Logger.warning(f'[Sensor] Alarm! "{sensor_name}" Sensor fired!')
+                            await self.add_event_action(value, sensor_name + ' BT sensor ' + value + str(current_sensor_settings[value + '_alarm_number_action']), time.localtime())
 
     # for exception in tasks bt_sensor_alarm
     @tasks.loop(seconds=1)
@@ -2352,7 +2383,7 @@ class Bot2b3(NextcordBot):
     async def on_command_error(self, context, exception):
         logger.error(str(exception))
 
-def sensor_check_val(sensor: str, measure: str, val: int) -> None:
+def sensor_check_val(sensor_name: str, measure: str, val: int) -> None:
     """
     Check if the sensor can fire an alarm
     Args:
@@ -2364,25 +2395,28 @@ def sensor_check_val(sensor: str, measure: str, val: int) -> None:
 
     """
     # max value at 50
-    sensors_settings[sensor]['current_' + measure] = min(round(val), 50)
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    current_sensor_settings['current_' + measure] = min(round(val), 50)
 
     # no check if offline
-    if not sensors_settings[sensor]['sensor_online']:
+    if not current_sensor_settings['sensor_online']:
         return
 
     # trigger something or if in recovery
-    if val > sensors_settings[sensor][measure + '_alarm_level'] or sensors_settings[sensor][measure + '_alarm_counter'] < 0:
-        sensors_settings[sensor][measure + '_alarm_counter'] = sensors_settings[sensor][measure + '_alarm_counter'] + 1
+    if val > current_sensor_settings[measure + '_alarm_level'] or current_sensor_settings[measure + '_alarm_counter'] < 0:
+        current_sensor_settings[measure + '_alarm_counter'] = current_sensor_settings[measure + '_alarm_counter'] + 1
 
     # consecutive detect and activate delay_off
-    if sensors_settings[sensor][measure + '_alarm_counter'] >= sensors_settings[sensor][measure + '_delay_on']:
+    if current_sensor_settings[measure + '_alarm_counter'] >= current_sensor_settings[measure + '_delay_on']:
         # alarm
-        sensors_settings[sensor][measure + '_alarm_number'] = sensors_settings[sensor][measure + '_alarm_number'] + 1
+        current_sensor_settings[measure + '_alarm_number'] = current_sensor_settings[measure + '_alarm_number'] + 1
         # add delay before the next alarm
-        sensors_settings[sensor][measure + '_alarm_counter'] = -sensors_settings[sensor][measure + '_delay_off']
+        current_sensor_settings[measure + '_alarm_counter'] = -current_sensor_settings[measure + '_delay_off']
+    
+    store.set_sensor_setting(sensor_name, current_sensor_settings)
 
 
-def sensor_notification(sensor, _, data: bytearray) -> None:
+def sensor_notification(sensor_name, _, data: bytearray) -> None:
     """
     Function call for every BT notify
     Args:
@@ -2393,9 +2427,12 @@ def sensor_notification(sensor, _, data: bytearray) -> None:
     Returns:
 
     """
-    if sensor == 'sound':
+    
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    
+    if sensor_name == 'sound':
         level = int.from_bytes(data[0:1], byteorder='big', signed=False)
-        sensor_check_val(sensor, 'sound', level)
+        sensor_check_val(sensor_name, 'sound', level)
     else:
         # X/Y/Z position (not sure about the unit)
         x_angle = int.from_bytes(data[0:2], byteorder='big', signed=True)
@@ -2411,19 +2448,21 @@ def sensor_notification(sensor, _, data: bytearray) -> None:
 
         # Calc something proportional to the position change
         pos = (abs(x_angle) + abs(y_angle) + abs(z_angle)) / 100
-        if sensors_settings[sensor]['position_ref'] == -1:
-            sensors_settings[sensor]['position_ref'] = pos
+        if current_sensor_settings['position_ref'] == -1:
+            current_sensor_settings['position_ref'] = pos
+            store.set_sensor_setting(sensor_name, current_sensor_settings)
         else:
-            sensors_settings[sensor]['position_ref'] = \
-                (sensors_settings[sensor]['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
-        pos = abs(pos - sensors_settings[sensor]['position_ref'])
+            current_sensor_settings['position_ref'] = (current_sensor_settings['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
+            store.set_sensor_setting(sensor_name, current_sensor_settings) 
+            
+        pos = abs(pos - current_sensor_settings['position_ref'])
 
         # check values
-        sensor_check_val(sensor, 'position', pos)
-        sensor_check_val(sensor, 'move', move)
+        sensor_check_val(sensor_name, 'position', pos)
+        sensor_check_val(sensor_name, 'move', move)
 
 
-async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
+async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
     """
     Start connexion with the BT ensors and activate notification
     Args:
@@ -2433,41 +2472,44 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
     Returns:
         None
     """
-    sensors_settings[sensor]['sensor_online'] = False
+    
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    
+    current_sensor_settings['sensor_online'] = False
     disconnected_event = asyncio.Event()
-    Logger.info(f"[Sensors] Searching sensor '{sensor}'...")
+    Logger.info(f"[Sensors] Searching sensor '{sensor_name}'...")
 
     def disconnected_callback(bt_client):
-        Logger.info(f"[Sensors] {sensor} sensor is disconnected")
-        sensors_settings[sensor]['sensor_online'] = False
+        Logger.info(f"[Sensors] {sensor_name} sensor is disconnected")
+        current_sensor_settings['sensor_online'] = False
         
-        if sensor == 'sound':
-            sensor_check_val(sensor, 'sound', 0)
+        if sensor_name == 'sound':
+            sensor_check_val(sensor_name, 'sound', 0)
         else:
-            sensor_check_val(sensor, 'move', 0)
-            sensor_check_val(sensor, 'position', 0)
+            sensor_check_val(sensor_name, 'move', 0)
+            sensor_check_val(sensor_name, 'position', 0)
             
         asyncio.create_task(store.websocket.broadcast({
             "type": "sensor-notification",
             "payload": [
-                "Sensor '{}' is disconnected.".format(sensor)
+                "Sensor '{}' is disconnected.".format(sensor_name)
             ]
         }))
             
         disconnected_event.set()
 
     async with BleakClient(address, disconnected_callback=disconnected_callback) as client:
-        Logger.info(f"[Sensors] {sensor} sensor is connected")
-        sensors_settings[sensor]['sensor_online'] = True
+        Logger.info(f"[Sensors] {sensor_name} sensor is connected")
+        current_sensor_settings['sensor_online'] = True
         
         await store.websocket.broadcast({
             "type": "sensor-notification",
             "payload": [
-                "Sensor '{}' is connected.".format(sensor)
+                "Sensor '{}' is connected.".format(sensor_name)
             ]
         })
         
-        await client.start_notify(char_uuid, partial(sensor_notification, sensor))
+        await client.start_notify(char_uuid, partial(sensor_notification, sensor_name))
         await disconnected_event.wait()
         # TODO: notify_here
 
@@ -2562,49 +2604,6 @@ def thread_update_ramp():
         except Exception as err:
             Logger.info(f"Thread error in update_ramp {err=}, {type(err)=}")
             time.sleep(30)
-
-
-def sensors_init():
-    Logger.info(f"[Sensors] Initializating Sensors settings...")
-    # motion sensors init
-    sensors_settings['motion1'] = {
-        "sensor_type": "motion",
-        "sensor_online": False,  # true if the sensors is online
-        "position_ref": -1.0,  # position reference
-        "position_alarm_level": 45,  # threshold for position alarm action
-        "position_delay_on": 1,  # nb consecutive value for starting an action
-        "position_delay_off": 5,  # nb consecutive value before starting an action again
-        "move_alarm_level": 12,  # threshold for moving alarm action
-        "move_delay_on": 1,  # nb consecutive value for starting an action
-        "move_delay_off": 5,  # nb consecutive value before starting an action again
-        "position_alarm_counter": 0,  # Num of consecutive position alarm
-        "move_alarm_counter": 0,  # Num of consecutive move alarm
-        "position_alarm_number": 0,  # Number of the last alarm
-        "move_alarm_number": 0,  # Number of the last alarm
-        "position_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "move_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "current_position": 0,  # Current position value
-        "current_move": 0,  # Current move value
-        "alarm_enable": False  # alarm activation
-    }
-    sensors_settings['motion2'] = sensors_settings['motion1'].copy()
-
-    # sound sensor init
-    sensors_settings['sound'] = {
-        "sensor_online": False,  # true if the sensors is online
-        "sensor_type": "sound",
-        "sound_alarm_level": 30,  # threshold for position alarm action
-        "sound_delay_on": 5,  # nb consecutive value for starting an action
-        "sound_delay_off": 10,  # nb consecutive value before starting an action again
-        "sound_alarm_counter": 0,  # Num of consecutive sound alarm
-        "sound_alarm_number": 0,  # Number of the last alarm
-        "sound_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "current_sound": 0,  # Current sound value
-        "alarm_enable": False  # alarm activation
-
-    }
-    
-    Logger.success(f"[Sensors] Successfully initialized {len(sensors_settings)} Sensors.")
     
 def mk2b_init():
     # Init 2B threads settings
@@ -2765,7 +2764,6 @@ if __name__ == '__main__':
     profile.loadProfiles()
     
     # init thread for BT sensors
-    sensors_init()
     if ENABLE_BT_SENSORS:
         for name, addr, service in BT_SENSORS:
             threads[name] = Thread(target=thread_sensors_bt, args=(name, addr, service))
