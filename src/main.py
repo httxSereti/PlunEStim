@@ -25,12 +25,14 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 import aiohttp
 import bluetooth  # type: ignore
 import dotenv
 import nextcord
 import serial.tools.list_ports  # type: ignore
+
 
 from bleak import BleakClient
 from nextcord import Interaction, SlashOption
@@ -221,9 +223,18 @@ store = Store()
 
 
 app = FastAPI()
+
 app.include_router(users.router)
 app.include_router(auth.router)
 app.include_router(admin.router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # init multi threading
 sensors_settings = {}
@@ -2662,7 +2673,18 @@ async def api_home():
     
 @app.get("/sensors")
 async def sensors():
-    return sensors_settings
+    # store.set_sensor_setting('motion1', {
+    # **store.get_sensor_setting('motion1'),
+    #     'sensor_online': True,
+    #     'position_alarm_level': 50
+    # })
+
+    # # Ou modifier une seule clé
+    # motion1 = storestore.get_sensor_setting('motion1')
+    # motion1['sensor_online'] = True
+    # store.set_sensor_setting('motion1', motion1)
+
+    return store.get_all_sensors_settings()
 
 @app.get("/units")
 async def units():    
