@@ -18,4 +18,4 @@ def generate_root_access():
     store = Store()
     store.add_user(rootUser)
     
-    print(f"root magic token '{rootUser.magic_token}'")
+    print(f"root magic url http://localhost:5173/auth?magic_token={rootUser.magic_token}")
