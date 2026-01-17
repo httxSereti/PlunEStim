@@ -36,6 +36,10 @@ class Store:
                     UnitDict.UNIT3.value: {},
                 }
                 self._sensors_settings: Dict = {}
+                
+                # Initalize Sensors
+                self._init_sensors()
+
                 self._users: Dict[str, User] = {}
                 self._websocket = WebSocketManager()
 
@@ -45,6 +49,56 @@ class Store:
                 self._users_lock = threading.RLock()
 
                 self._initialized = True
+
+    """
+        Init Functions
+    """
+
+    def _init_sensors(self) -> None:
+        """
+        Initialize Sensors with default values, supported sensors;
+          - move (x2)
+          - sound (x1)
+        """
+
+        # Motion sensors init
+        motion_config = {
+            "sensor_type": "motion",
+            "sensor_online": False,  # true if the sensors is online
+            "position_ref": -1.0,  # position reference
+            "position_alarm_level": 45,  # threshold for position alarm action
+            "position_delay_on": 1,  # nb consecutive value for starting an action
+            "position_delay_off": 5,  # nb consecutive value before starting an action again
+            "move_alarm_level": 12,  # threshold for moving alarm action
+            "move_delay_on": 1,  # nb consecutive value for starting an action
+            "move_delay_off": 5,  # nb consecutive value before starting an action again
+            "position_alarm_counter": 0,  # Num of consecutive position alarm
+            "move_alarm_counter": 0,  # Num of consecutive move alarm
+            "position_alarm_number": 0,  # Number of the last alarm
+            "move_alarm_number": 0,  # Number of the last alarm
+            "position_alarm_number_action": 0,  # Number of the last alarm who had generated an action
+            "move_alarm_number_action": 0,  # Number of the last alarm who had generated an action
+            "current_position": 0,  # Current position value
+            "current_move": 0,  # Current move value
+            "alarm_enable": False,  # alarm activation
+        }
+
+        self._sensors_settings["motion1"] = motion_config
+        self._sensors_settings["motion2"] = motion_config.copy()
+
+        # Sound sensor init
+        self._sensors_settings["sound"] = {
+            "sensor_online": False,  # true if the sensors is online
+            "sensor_type": "sound",
+            "sound_alarm_level": 30,  # threshold for position alarm action
+            "sound_delay_on": 5,  # nb consecutive value for starting an action
+            "sound_delay_off": 10,  # nb consecutive value before starting an action again
+            "sound_alarm_counter": 0,  # Num of consecutive sound alarm
+            "sound_alarm_number": 0,  # Number of the last alarm
+            "sound_alarm_number_action": 0,  # Number of the last alarm who had generated an action
+            "current_sound": 0,  # Current sound value
+            "alarm_enable": False,  # alarm activation
+        }
 
     """
         Units Functions
