@@ -12,11 +12,11 @@ from api.helpers import (
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 CUID_GENERATOR: Cuid = Cuid(length=7)
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 store = Store()
 
 
-@router.post("/login", tags=["auth"], response_model=TokenResponse)
+@router.post("/login", response_model=TokenResponse)
 async def login(magic_token: str):
     if magic_token is None:
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -38,6 +38,6 @@ async def login(magic_token: str):
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 
-@router.get("/auth/me")
+@router.get("/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     return current_user
