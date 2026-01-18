@@ -9,7 +9,7 @@ from api.helpers import (
     get_current_user,
 )
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 CUID_GENERATOR: Cuid = Cuid(length=7)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -25,7 +25,7 @@ async def login(magic_token: str):
     for id, user in store.get_all_users().items():
         if user.magic_token == magic_token:
             access_token = create_access_token(
-                data={"sub": user.id},
+                data={"sub": user.id, "role": user.role.value},
                 expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
             )
 

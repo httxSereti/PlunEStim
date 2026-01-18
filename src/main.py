@@ -23,6 +23,7 @@ from functools import partial
 from threading import Thread
 from typing import Optional
 
+import jwt
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -221,6 +222,8 @@ store = Store()
 # fastAPI
 #------------------
 
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
 
 app = FastAPI()
 
@@ -2489,14 +2492,18 @@ async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
             sensor_check_val(sensor_name, 'move', 0)
             sensor_check_val(sensor_name, 'position', 0)
             
-        asyncio.create_task(store.websocket.broadcast({
-            "type": "sensor-notification",
-            "payload": [
-                "Sensor '{}' is disconnected.".format(sensor_name)
-            ]
-        }))
+        loop = asyncio.get_event_loop()
             
-        disconnected_event.set()
+        # Planifier la coroutine dans la loop principale
+        asyncio.run_coroutine_threadsafe(
+            store.websocket.broadcast({
+                "type": "sensor-notification",
+                "payload": [f"Sensor '{sensor_name}' is disconnected."]
+            }),
+            loop
+        )
+            
+        disconnected_event.set()    
 
     async with BleakClient(address, disconnected_callback=disconnected_callback) as client:
         Logger.info(f"[Sensors] {sensor_name} sensor is connected")
@@ -2672,17 +2679,6 @@ async def api_home():
     
 @app.get("/sensors")
 async def sensors():
-    # store.set_sensor_setting('motion1', {
-    # **store.get_sensor_setting('motion1'),
-    #     'sensor_online': True,
-    #     'position_alarm_level': 50
-    # })
-
-    # # Ou modifier une seule clé
-    # motion1 = storestore.get_sensor_setting('motion1')
-    # motion1['sensor_online'] = True
-    # store.set_sensor_setting('motion1', motion1)
-
     return store.get_all_sensors_settings()
 
 @app.get("/units")
@@ -2692,11 +2688,11 @@ async def units():
 
 @app.get("/update")
 async def upd():
-    await bot.add_event_action(
-        'chaster_pillory_vote',
-        'pillory_chaster' + '_' + "lucie",
-        time.localtime()
-    )
+    # await bot.add_event_action(
+    #     'chaster_pillory_vote',
+    #     'pillory_chaster' + '_' + "lucie",
+    #     time.localtime()
+    # )
     await store.websocket.broadcast({
         "type": "sensor-notification",
         "payload": ['sensor 1 updated']
@@ -2706,51 +2702,99 @@ async def upd():
 
 # WebSocket API
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    client_id = str(uuid.uuid4()) # for the moment waiting for jwt
-    
-    await store.websocket.connect(client_id, websocket)
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    user_id = None
     
     try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        # role = payload.get("role")
+        
+        # connect User to WebSocket
+        await store.websocket.connect(user_id, websocket)
+           
         # Send initial connection message
         await websocket.send_json({
             "type": "connected",
-            "message": "WebSocket connected successfully"
+            "payload": {
+                "message": f"WebSocket connected successfully, hello {user_id}",
+                "userId": user_id
+            }
         })
         
-        user = User(
-            id=client_id,
-            display_name="",
-        )
+        await websocket.send_json({
+            "type": "sensors",
+            "sensors": store.get_all_sensors_settings()
+        })
         
-        store.add_user(user)
-        
-        # Heartbeat and message handling
+        # Heartbeat and Message handling
         while True:
             try:
                 # Wait for messages from client with timeout
-                data = await asyncio.wait_for(
-                    websocket.receive_json(),
-                    timeout=30
+                text = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=60
                 )
                 
-                pprint(data)
+                message = json.loads(text)
+                print(f"📨 Received: {json.dumps(message, indent=2)}")
                 
+                msg_id = message.get("id")
+                msg_type = message.get("type")
+                msg_payload = message.get("payload")
+
+                
+                # Answer to Ping
+                if msg_type == "ping":
+                    await websocket.send_json({"type": "pong"})
+                    continue
+
                 # Handle client messages (e.g., commands)
-                if data.get("type") == "command":
-                    pprint(data)
-                    # command = DeviceCommand(**data.get("data"))
-                    # await device_store.websocket.send_command(command)
+                elif msg_type == "get:notifications":
+                    print(f"🔔 Get notifications - ID: {msg_id}")
                     
-            except asyncio.TimeoutError:
-                # Send heartbeat ping
-                await websocket.send_json({"type": "ping"})
+                    # Récupérer les notifications
+                    notifications = [
+                        {"id": 1, "message": "Test notification 1"},
+                        {"id": 2, "message": "Test notification 2"}
+                    ]
+                    
+                    # IMPORTANT : Renvoyer avec l'ID
+                    response = {
+                        "type": "get:notifications",
+                        "payload": notifications,
+                        "id": msg_id  # ← CRUCIAL
+                    }
+                    
+                    print(f"📤 Sending: {json.dumps(response)}")
+                    await websocket.send_json(response)
+                else:
+                    print(f"⚠️ Unknown message type: {msg_type}")
+                    # if data.get("type") == "command":
+                    #     pprint(data)
+                    #     # command = DeviceCommand(**data.get("data"))
+                    #     # await device_store.websocket.send_command(command)
                 
+            except asyncio.TimeoutError:
+                print("💓 Sending heartbeat ping")
+                await websocket.send_json({"type": "ping"})
+                continue 
+
+    except jwt.PyJWTError as e:
+        print(f"❌ JWT error: {e}")
+        await websocket.close(code=4001, reason="Invalid token")
+        
     except WebSocketDisconnect:
-        store.websocket.disconnect(websocket)
+        print(f"🔴 Client disconnected: {user_id}")
+        
     except Exception as e:
-        print(f"WebSocket error: {e}")
-        store.websocket.disconnect(websocket)
+        print(f"❌ WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+    finally:
+        if user_id:
+            store.websocket.disconnect(user_id)
 # bot
 
 if __name__ == '__main__':
