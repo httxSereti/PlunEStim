@@ -2757,6 +2757,15 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                         current_sensor_settings.update(value)
                         store.set_sensor_setting(sensorName, current_sensor_settings)
                     
+                        await websocket.send_json({
+                            "type": "sensors:update",
+                            "payload": {
+                                "id": sensorName,
+                                "changes": value
+                                # sensorName: value
+                            },
+                        })
+                    
                     await websocket.send_json({
                         "type": "command",
                         "payload": {"status": "ok"},
