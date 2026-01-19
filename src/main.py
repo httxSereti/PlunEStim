@@ -2717,14 +2717,14 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
         await websocket.send_json({
             "type": "connected",
             "payload": {
-                "message": f"WebSocket connected successfully, hello {user_id}",
+                "message": "WebSocket connected successfully",
                 "userId": user_id
             }
         })
         
         await websocket.send_json({
-            "type": "sensors",
-            "sensors": store.get_all_sensors_settings()
+            "type": "sensors:init",
+            "payload": store.get_all_sensors_settings()
         })
         
         # Heartbeat and Message handling
@@ -2748,7 +2748,20 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                 if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
                     continue
-
+                elif msg_type == "sensors:update":
+                    pprint(msg_payload)
+                    
+                    # loop over sensors then fields
+                    for sensorName, value in msg_payload.items():
+                        current_sensor_settings = store.get_sensor_setting(sensorName)
+                        current_sensor_settings.update(value)
+                        store.set_sensor_setting(sensorName, current_sensor_settings)
+                    
+                    await websocket.send_json({
+                        "type": "command",
+                        "payload": {"status": "ok"},
+                        "id": msg_id
+                    })
                 # Handle client messages (e.g., commands)
                 elif msg_type == "get:notifications":
                     print(f"🔔 Get notifications - ID: {msg_id}")

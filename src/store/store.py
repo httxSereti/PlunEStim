@@ -63,6 +63,7 @@ class Store:
 
         # Motion sensors init
         motion_config = {
+            "id": "motion1",
             "sensor_type": "motion",
             "sensor_online": False,  # true if the sensors is online
             "position_ref": -1.0,  # position reference
@@ -85,11 +86,14 @@ class Store:
 
         self._sensors_settings["motion1"] = motion_config
         self._sensors_settings["motion2"] = motion_config.copy()
+        
+        self._sensors_settings["motion2"]["id"] = "motion2"
 
         # Sound sensor init
         self._sensors_settings["sound"] = {
-            "sensor_online": False,  # true if the sensors is online
+            "id": "sound",
             "sensor_type": "sound",
+            "sensor_online": False,  # true if the sensors is online
             "sound_alarm_level": 30,  # threshold for position alarm action
             "sound_delay_on": 5,  # nb consecutive value for starting an action
             "sound_delay_off": 10,  # nb consecutive value before starting an action again
