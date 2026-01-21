@@ -2743,12 +2743,32 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                 msg_type = message.get("type")
                 msg_payload = message.get("payload")
 
-                
-                # Answer to Ping
                 if msg_type == "ping":
+                    """
+                        reply to ping for keepalive
+                    """
                     await websocket.send_json({"type": "pong"})
                     continue
+                elif msg_type == "core:stop":
+                    """
+                        Emergency shutdown all units and queue
+                    """
+                    bot.queueRunning = False
+                    for unit in BT_UNITS:
+                        for ch in ('ch_A', 'ch_B'):
+                            threads_settings[unit]['updated'] = True
+                            threads_settings[unit][ch] = 0
+                            threads_settings[unit][ch + '_max'] = 0
+                            
+                    await websocket.send_json({
+                        "type": "command",
+                        "payload": {"status": "ok"},
+                        "id": msg_id
+                    })
                 elif msg_type == "sensors:update":
+                    """
+                        Update one or more Sensors
+                    """
                     pprint(msg_payload)
                     
                     # loop over sensors then fields
@@ -2766,6 +2786,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                             },
                         })
                     
+                    # reply with ok
                     await websocket.send_json({
                         "type": "command",
                         "payload": {"status": "ok"},
@@ -2791,6 +2812,9 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                     print(f"📤 Sending: {json.dumps(response)}")
                     await websocket.send_json(response)
                 else:
+                    """
+                        Message not supported
+                    """
                     print(f"⚠️ Unknown message type: {msg_type}")
                     # if data.get("type") == "command":
                     #     pprint(data)
