@@ -62,7 +62,7 @@ from api.rest import users, auth, admin
 dotenv.load_dotenv('config.env')
 
 # DEBUG setting
-ENABLE_MK2BT = False  # Disable mk2bt thread
+ENABLE_MK2BT = True  # Disable mk2bt thread
 ENABLE_BT_SENSORS = True  # Disable BT sensors thread
 
 # API change
@@ -2477,8 +2477,8 @@ async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
     """
     
     current_sensor_settings = store.get_sensor_setting(sensor_name)
-    
     current_sensor_settings['sensor_online'] = False
+    
     disconnected_event = asyncio.Event()
     Logger.info(f"[Sensors] Searching sensor '{sensor_name}'...")
 
@@ -2492,13 +2492,17 @@ async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
             sensor_check_val(sensor_name, 'move', 0)
             sensor_check_val(sensor_name, 'position', 0)
             
+        # get current loop and queue ws update
         loop = asyncio.get_event_loop()
-            
-        # Planifier la coroutine dans la loop principale
         asyncio.run_coroutine_threadsafe(
             store.websocket.broadcast({
-                "type": "sensor-notification",
-                "payload": [f"Sensor '{sensor_name}' is disconnected."]
+                "type": "sensors:update",
+                "payload": {
+                    "id": sensor_name,
+                    "changes": {
+                        "sensor_online": False
+                    }
+                },
             }),
             loop
         )
@@ -2509,16 +2513,23 @@ async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
         Logger.info(f"[Sensors] {sensor_name} sensor is connected")
         current_sensor_settings['sensor_online'] = True
         
-        await store.websocket.broadcast({
-            "type": "sensor-notification",
-            "payload": [
-                "Sensor '{}' is connected.".format(sensor_name)
-            ]
-        })
+        # get current loop and queue ws update
+        loop = asyncio.get_event_loop()
+        asyncio.run_coroutine_threadsafe(
+            store.websocket.broadcast({
+                "type": "sensors:update",
+                "payload": {
+                    "id": sensor_name,
+                    "changes": {
+                        "sensor_online": True
+                    }
+                },
+            }),
+            loop
+        )
         
         await client.start_notify(char_uuid, partial(sensor_notification, sensor_name))
         await disconnected_event.wait()
-        # TODO: notify_here
 
 
 def thread_sensors_bt(sensor: str, addr: str, service: str) -> None:
