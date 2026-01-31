@@ -1,11 +1,11 @@
 import threading
+import asyncio
 from typing import Dict, Optional, Set
 
 from models.User import User
 
 from api.ws.websocket_manager import WebSocketManager
 from typings import UnitDict, Role, Permission
-
 
 class Store:
     """
@@ -119,7 +119,7 @@ class Store:
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
-                raise KeyError(f"Dictionary '{dict_name}' doesn't exist.")
+                raise KeyError(f"Dictionary '{dict_name}' doesn't exist")
             self._units_settings[dict_name][key] = value
 
     def get_unit_dict(self, unit_dict: UnitDict) -> Dict:
@@ -133,7 +133,7 @@ class Store:
         with self._units_lock:
             dict_name = unit_dict.value
             if dict_name not in self._units_settings:
-                raise KeyError(f"Dictionary '{dict_name}' doesn't exist.")
+                raise KeyError(f"Dictionary '{dict_name}' doesn't exist")
             self._units_settings[dict_name].update(settings)
 
     def get_all_units_settings(self) -> Dict[str, Dict]:
@@ -165,10 +165,55 @@ class Store:
     def set_sensor_setting(self, key: str, value):
         with self._sensors_lock:
             self._sensors_settings[key] = value
-
-    def update_sensors_settings(self, settings: Dict):
+        
+        # broadcast change
+        self._broadcast_sensor_update(key, value)
+            
+    def update_sensor_fields(self, sensor_name: str, fields: Dict):
         with self._sensors_lock:
-            self._sensors_settings.update(settings)
+            if sensor_name not in self._sensors_settings:
+                raise KeyError(f"Sensor '{sensor_name}' doesn't exist")
+            self._sensors_settings[sensor_name].update(fields)
+        
+        # broadcast only updated fields
+        self._broadcast_sensor_update(sensor_name, fields, partial=True)
+    
+    def update_sensor_field(self, sensor_name: str, field_name: str, value):
+        with self._sensors_lock:
+            if sensor_name not in self._sensors_settings:
+                raise KeyError(f"Sensor '{sensor_name}'  doesn't exist")
+            self._sensors_settings[sensor_name][field_name] = value
+        
+        # broadcast only updated field
+        self._broadcast_sensor_update(sensor_name, {field_name: value}, partial=True)
+    
+    def _broadcast_sensor_update(self, sensor_id: str, data: Dict, partial: bool = False):
+        """
+            Broadcast to WebSocket clients sensor updates
+        """
+        try:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    return
+            
+            message = {
+                "type": "sensors:update",
+                "payload": {
+                    "id": sensor_id,
+                    "partial": partial,
+                    "changes": data
+                }
+            }
+            
+            asyncio.run_coroutine_threadsafe(
+                self._websocket.broadcast(message),
+                loop
+            )
+        except Exception as e:
+            print(f"[WebSocket] Error when broadcast sensor update: {e}")
 
     def get_all_sensors_settings(self) -> Dict:
         with self._sensors_lock:
