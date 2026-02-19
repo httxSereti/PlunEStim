@@ -1644,10 +1644,7 @@ class Bot2b3(NextcordBot):
                 else:
                     await interaction.response.send_message('Sensor {} alarm is set'.format(arg_sensor))
                     
-                # fetch and update sensor
-                new_sensor_settings = store.get_sensor_setting(arg_sensor)
-                new_sensor_settings['alarm_enable'] = bool(arg_enable)
-                store.set_sensor_setting(arg_sensor, new_sensor_settings)
+                store.update_sensor_field(arg_sensor, "alarm_enable", bool(arg_enable))
                 
             return None
 
@@ -2070,7 +2067,8 @@ class Bot2b3(NextcordBot):
                     # check if the alarm counter have changed
                     if current_sensor_settings[value + '_alarm_number'] != current_sensor_settings[value + '_alarm_number_action']:
                         current_sensor_settings[value + '_alarm_number_action'] = current_sensor_settings[value + '_alarm_number']
-                        store.set_sensor_setting(sensor_name, current_sensor_settings)
+                        store.update_sensor_field(sensor_name, value + "_alarm_number_action", current_sensor_settings[value + '_alarm_number'])
+                        
                         # if alarm is active, add event in queue
                         if EVENT_ACTION[value] and current_sensor_settings['alarm_enable']:
                             Logger.warning(f'[Sensor] Alarm! "{sensor_name}" Sensor fired!')
@@ -2369,6 +2367,10 @@ class Bot2b3(NextcordBot):
         # print(f"chaster={self.chaster.linked}")
         # print(f"profile={self.profile.profileFiles}")
         
+        # create root and redirect host to it
+        magicLink: str = generate_root_access()
+        await self.get_user(CONFIGURATION['subjectDiscordId']).send(content=f"Magic Link: {magicLink}")
+        
         await self.chaster.linkLock()
         
         # Start all tasks
@@ -2397,26 +2399,40 @@ def sensor_check_val(sensor_name: str, measure: str, val: int) -> None:
     Returns:
 
     """
-    # max value at 50
+    # fetch current settings
     current_sensor_settings = store.get_sensor_setting(sensor_name)
-    current_sensor_settings['current_' + measure] = min(round(val), 50)
+    
+    # max value at 50 (why?)
+    if sensor_name == "sound":
+        new_current_value = min(round(val), 90)
+    else:
+        new_current_value = min(round(val), 50)
 
     # no check if offline
     if not current_sensor_settings['sensor_online']:
         return
+    
+    fields_to_update = {
+        'current_' + measure: new_current_value
+    }
+    
+    new_counter = current_sensor_settings[measure + '_alarm_counter']
 
-    # trigger something or if in recovery
+    # value is superior to alarm level
     if val > current_sensor_settings[measure + '_alarm_level'] or current_sensor_settings[measure + '_alarm_counter'] < 0:
         current_sensor_settings[measure + '_alarm_counter'] = current_sensor_settings[measure + '_alarm_counter'] + 1
 
+        new_counter = new_counter + 1
+        fields_to_update[measure + '_alarm_counter'] = new_counter
+        
     # consecutive detect and activate delay_off
-    if current_sensor_settings[measure + '_alarm_counter'] >= current_sensor_settings[measure + '_delay_on']:
+    if new_counter >= current_sensor_settings[measure + '_delay_on']:
         # alarm
-        current_sensor_settings[measure + '_alarm_number'] = current_sensor_settings[measure + '_alarm_number'] + 1
+        fields_to_update[measure + '_alarm_number'] = current_sensor_settings[measure + '_alarm_number'] + 1
         # add delay before the next alarm
-        current_sensor_settings[measure + '_alarm_counter'] = -current_sensor_settings[measure + '_delay_off']
-    
-    store.set_sensor_setting(sensor_name, current_sensor_settings)
+        fields_to_update[measure + '_alarm_counter'] = -current_sensor_settings[measure + '_delay_off']
+
+    store.update_sensor_fields(sensor_name, fields_to_update)
 
 
 def sensor_notification(sensor_name, _, data: bytearray) -> None:
@@ -2451,14 +2467,19 @@ def sensor_notification(sensor_name, _, data: bytearray) -> None:
 
         # Calc something proportional to the position change
         pos = (abs(x_angle) + abs(y_angle) + abs(z_angle)) / 100
+        
+        # new position
+        new_position_ref: int = pos
+        
         if current_sensor_settings['position_ref'] == -1:
-            current_sensor_settings['position_ref'] = pos
-            store.set_sensor_setting(sensor_name, current_sensor_settings)
+            new_position_ref = pos
         else:
-            current_sensor_settings['position_ref'] = (current_sensor_settings['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
-            store.set_sensor_setting(sensor_name, current_sensor_settings) 
-            
-        pos = abs(pos - current_sensor_settings['position_ref'])
+            new_position_ref = (current_sensor_settings['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
+        
+        # update sensor    
+        store.update_sensor_field(sensor_name, "position_ref", new_position_ref)
+        
+        pos = abs(pos - new_position_ref)
 
         # check values
         sensor_check_val(sensor_name, 'position', pos)
@@ -2748,7 +2769,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                 )
                 
                 message = json.loads(text)
-                print(f"📨 Received: {json.dumps(message, indent=2)}")
+                if message.get("type") != "ping": 
+                    print(f"📨 Received: {json.dumps(message, indent=2)}")
                 
                 msg_id = message.get("id")
                 msg_type = message.get("type")
@@ -2780,23 +2802,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                     """
                         Update one or more Sensors
                     """
-                    pprint(msg_payload)
-                    
                     # loop over sensors then fields
                     for sensorName, value in msg_payload.items():
-                        current_sensor_settings = store.get_sensor_setting(sensorName)
-                        current_sensor_settings.update(value)
-                        store.set_sensor_setting(sensorName, current_sensor_settings)
-                    
-                        await websocket.send_json({
-                            "type": "sensors:update",
-                            "payload": {
-                                "id": sensorName,
-                                "changes": value
-                                # sensorName: value
-                            },
-                        })
-                    
+                        store.update_sensor_fields(sensorName, value)
+
                     # reply with ok
                     await websocket.send_json({
                         "type": "command",
@@ -2886,9 +2895,6 @@ if __name__ == '__main__':
         Logger.warning(f"[Main] Starting thread '{tr}'!")
         threads[tr].daemon = True
         threads[tr].start()
-        
-    # create root and redirect host to it
-    generate_root_access()
 
     # start Discord Bot
     while True:
