@@ -47,6 +47,7 @@ from constants import DISCORD_GUILD_IDS
 from profiles import ProfileModule
 
 from typings import *
+from typings import Permission
 from services.chaster import *
 from services.notifier import *
 from utils import *
@@ -2708,32 +2709,46 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
                     """
                         Emergency shutdown all units and queue
                     """
-                    bot.queueRunning = False
-                    for unit in BT_UNITS:
-                        for ch in ('ch_A', 'ch_B'):
-                            threads_settings[unit]['updated'] = True
-                            threads_settings[unit][ch] = 0
-                            threads_settings[unit][ch + '_max'] = 0
-                            
-                    await websocket.send_json({
-                        "type": "command",
-                        "payload": {"status": "ok"},
-                        "id": msg_id
-                    })
+                    if store.check_permission(user_id, Permission.WRITE_UNITS):
+                        bot.queueRunning = False
+                        for unit in BT_UNITS:
+                            for ch in ('ch_A', 'ch_B'):
+                                threads_settings[unit]['updated'] = True
+                                threads_settings[unit][ch] = 0
+                                threads_settings[unit][ch + '_max'] = 0
+                                
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "ok"},
+                            "id": msg_id
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "error", "message": "Missing permission: WRITE_UNITS"},
+                            "id": msg_id
+                        })
                 elif msg_type == "sensors:update":
                     """
                         Update one or more Sensors
                     """
-                    # loop over sensors then fields
-                    for sensorName, value in msg_payload.items():
-                        store.update_sensor_fields(sensorName, value)
+                    if store.check_permission(user_id, Permission.WRITE_SENSORS):
+                        # loop over sensors then fields
+                        for sensorName, value in msg_payload.items():
+                            store.update_sensor_fields(sensorName, value)
 
-                    # reply with ok
-                    await websocket.send_json({
-                        "type": "command",
-                        "payload": {"status": "ok"},
-                        "id": msg_id
-                    })
+                        # reply with ok
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "ok"},
+                            "id": msg_id
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "error", "message": "Missing permission: WRITE_SENSORS"},
+                            "id": msg_id
+                        })
                 # Handle client messages (e.g., commands)
                 elif msg_type == "get:notifications":
                     print(f"🔔 Get notifications - ID: {msg_id}")
