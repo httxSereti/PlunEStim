@@ -24,6 +24,17 @@ ROLE_PERMISSIONS: Dict[Role, Set[Permission]] = {
         Permission.READ_UNITS,
         Permission.READ_SENSORS,
         Permission.READ_PROFILES,
+        Permission.WRITE_UNITS,
+        Permission.WRITE_SENSORS,
+    },
+    Role.TRUSTED: {
+        Permission.READ_UNITS,
+        Permission.READ_SENSORS,
+        Permission.READ_PROFILES,
+        Permission.WRITE_UNITS,
+        Permission.WRITE_SENSORS,
+        Permission.WRITE_PROFILES,
+        Permission.MANAGE_PROFILES,
     },
     Role.ADMIN: {
         Permission.READ_UNITS,
