@@ -47,5 +47,7 @@ async def generate_magic_link(
     )
 
     store.add_user(user)
+    
+    magic_link = f"http://localhost:5173/auth?magic_token={magic_token}"
 
-    return {"magic_token": magic_token}
+    return {"magic_link": magic_link}
