@@ -1,0 +1,62 @@
+{
+  "chaster_vote_add": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+10",
+    "duration": "20",
+    "wait": true
+  },
+  "chaster_vote_sub": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+20",
+    "duration": "20",
+    "wait": true
+  },
+  "vote": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "5",
+    "wait": true
+  },
+  "vote_sub": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "5",
+    "wait": true
+  },
+  "chaster_pillory_vote": {
+    "type": "lvl",
+    "unit": "123RM",
+    "dest": "ABRM",
+    "level": "%+30",
+    "duration": "20",
+    "wait": true
+  },
+  "position": {
+    "type": "pro",
+    "profile": "J",
+    "level": 100,
+    "duration": "30",
+    "wait": true
+  },
+  "move": {
+    "type": "pro",
+    "profile": "D",
+    "level": 100,
+    "duration": "30",
+    "wait": true
+  },
+  "sound": {
+    "type": "multi",
+    "target": "all",
+    "prct": 20,
+    "rnd": true
+  }
+}

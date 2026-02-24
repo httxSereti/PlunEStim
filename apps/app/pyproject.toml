@@ -1,0 +1,42 @@
+[project]
+name = "pes-bot"
+version = "1.0.1"
+description = "Discord Bot to manage your EStim devices and sessions."
+requires-python = "==3.12.6"
+authors = [
+    { name = "graviky" },
+    { name = "deLulu" },
+]
+dependencies = [
+    "nextcord==3.1.0",
+    "pyttsx3",
+    "python-dotenv",
+    "requests",
+    "pybluez",
+    "bleak",
+    "pyserial",
+    "discord-handler",
+    "poetryup",
+    "kaleido==0.2.1",
+    "discord-webhook",
+    "playsound3>=3.2.3,<4",
+    "mypy>=1.16.0,<2",
+    "fastapi>=0.121.2,<0.122",
+    "uvicorn>=0.38.0,<0.39",
+    "websockets>=15.0.1,<16",
+    "cuid2>=2.0.1",
+    "pyjwt>=2.10.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+pybluez = { git = "git+https://github.com/pybluez/pybluez.git" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.mypy]
+check_untyped_defs = true
