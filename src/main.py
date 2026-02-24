@@ -18,24 +18,28 @@ import random
 import re
 import time
 import traceback
+import uuid
 from functools import partial
 from threading import Thread
 from typing import Optional
+
+import jwt
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 import aiohttp
 import bluetooth  # type: ignore
 import dotenv
 import nextcord
-import plotly.graph_objs as go  # type: ignore
 import serial.tools.list_ports  # type: ignore
 
+
 from bleak import BleakClient
-from discord_webhook import DiscordWebhook # type: ignore
+from bleak.exc import BleakDeviceNotFoundError
 from nextcord import Interaction, SlashOption
 from nextcord.ext.commands import Bot as NextcordBot
-from nextcord.ext import commands
 from nextcord.ext import tasks
-from plotly.subplots import make_subplots  # type: ignore
 
 from pprint import pprint
 
@@ -44,16 +48,24 @@ from constants import DISCORD_GUILD_IDS
 from profiles import ProfileModule
 
 from typings import *
+from typings import Permission
 from services.chaster import *
 from services.notifier import *
 from utils import *
+
+from store import Store
+from models.User import User
+
+from utils.users.generate_root_access import generate_root_access
+
+from api.rest import users, auth, admin
 
 # load env
 dotenv.load_dotenv('config.env')
 
 # DEBUG setting
-ENABLE_MK2BT = False  # Disable mk2bt thread
-ENABLE_BT_SENSORS = False  # Disable BT sensors thread
+ENABLE_MK2BT = True  # Disable mk2bt thread
+ENABLE_BT_SENSORS = True  # Disable BT sensors thread
 
 # API change
 intents = nextcord.Intents.default()
@@ -79,8 +91,6 @@ BT_UNITS = ("UNIT1", "UNIT2", "UNIT3")
 
 # Bot config
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
-STATUS_IMG_FILE = os.getenv('STATUS_IMG_FILE')
-DISCORD_STATUS_WEBHOOKS = os.getenv('DISCORD_STATUS_WEBHOOKS')
 
 # Default event config
 with open('configurations/event_action.json') as json_file:
@@ -207,8 +217,31 @@ handler_nextcord = logging.FileHandler(filename='nextcord.log', encoding='utf-8'
 handler_nextcord.setFormatter(logging.Formatter('[%(asctime)s]%(levelname)s:%(name)s: %(message)s'))
 logger_nextcord.addHandler(handler_nextcord)
 
+# init Store
+store = Store()
+
+#------------------
+# fastAPI
+#------------------
+
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+ALGORITHM = "HS256"
+
+app = FastAPI()
+
+app.include_router(users.router)
+app.include_router(auth.router)
+app.include_router(admin.router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # init multi threading
-sensors_settings = {}
 threads_settings = {}
 
 # Slash_Command constantes
@@ -307,8 +340,6 @@ CHOICE_USAGE_ALL_RND.append('rnd')
 CHOICE_USAGE_ALL_RND.append('rnd multiple')
 # Power level selection
 CHOICE_POWER = {'Low': 'L', 'High': 'H'}
-
-
 class UnitConnect:
     """
  Manage the connexion to the 2B unit with the serial over BT
@@ -725,7 +756,6 @@ class Bot2b3(NextcordBot):
 
     def __init__(
         self,
-        profile: ProfileModule
     ):
         super().__init__(
             command_prefix="/", 
@@ -747,7 +777,6 @@ class Bot2b3(NextcordBot):
         self.logChannel: nextcord.abc.GuildChannel | None = None
         self.statusChannel: nextcord.abc.GuildChannel | None = None
         
-        self.profile: ProfileModule = profile
         self.chaster: Chaster = Chaster(self)
         self.notifier: Notifier = Notifier(self)
         
@@ -769,7 +798,6 @@ class Bot2b3(NextcordBot):
         # pprint(self.queueActions)
         
         
-        self.update_graph_status = 0  # update the image of all units status
         self.previous_2B_sync = False  # previous global 2B sync
         
         self.chaster_lockid = None  # id of the current chaster lock
@@ -788,7 +816,7 @@ class Bot2b3(NextcordBot):
             backup_data = {
                 'EVENT_ACTION': EVENT_ACTION,
                 'threads_settings': threads_settings,
-                'sensors_settings': sensors_settings,
+                'sensors_settings': store.get_all_sensors_settings(),
                 'USAGE_LIMIT': USAGE_LIMIT
             }
             filename = filename + '.json'
@@ -798,9 +826,14 @@ class Bot2b3(NextcordBot):
             await interaction.response.send_message("backup done")
 
         @self.slash_command(name='restore', description='Restore bot config')
-        async def bot_recover(interaction: Interaction,
-                              filename: str = SlashOption(name='name', description='backup_name',
-                                                          required=True)) -> None:
+        async def bot_recover(
+            interaction: Interaction,
+            filename: str = SlashOption(
+                name='name',
+                description='backup_name',
+                required=True
+            )
+        ) -> None:
             filename = filename + '.json'
             bck_file = open(DIR_BACKUP / filename, 'r')
             backup_data = json.load(bck_file)
@@ -816,11 +849,26 @@ class Bot2b3(NextcordBot):
                         threads_settings[bck_bt_name][field] = True
                     else:
                         threads_settings[bck_bt_name][field] = backup_data['threads_settings'][bck_bt_name][field]
-            # sensor
-            for sensor in backup_data['sensors_settings'].keys():
-                for field in backup_data['sensors_settings'][sensor].keys():
+
+            # restore Sensors
+            for sensor_name in backup_data['sensors_settings'].keys():
+                
+                # fetch current sensor configuration
+                current_sensor_config = store.get_sensor_setting(sensor_name)
+                
+                # no sensor, so init it
+                if current_sensor_config is None:
+                    current_sensor_config = {}
+                
+                # explore fields
+                for field in backup_data['sensors_settings'][sensor_name].keys():
+                    # restore only these
                     if re.search(r"(_alarm_level|_delay_on|_delay_off)", field):
-                        sensors_settings[sensor][field] = backup_data['sensors_settings'][sensor][field]
+                        current_sensor_config[field] = backup_data['sensors_settings'][sensor_name][field]
+                
+                # Save
+                store.set_sensor_setting(sensor_name, current_sensor_config)
+                            
             # limit
             for usage in backup_data['USAGE_LIMIT']:
                 USAGE_LIMIT[usage] = backup_data['USAGE_LIMIT'][usage]
@@ -925,13 +973,6 @@ class Bot2b3(NextcordBot):
                         ))
                         # end
                     await interaction.response.send_message("\n".join(txt))
-
-        @self.slash_command(name='status',
-                            description='show bot pic status in the current channel')
-        async def bot_status(interaction: Interaction) -> None:
-            await interaction.response.send_message('status:')
-            await interaction.channel.send(files=[nextcord.File(STATUS_IMG_FILE)])
-            return None
 
         @self.slash_command(name='event_multi',
                             description='Associate event with level multiplier change')
@@ -1189,7 +1230,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['mode'] = mode_id
                         if MODE_2B[mode_id]['adj_2'] == '':  # reset to adj_1 for modes without adj_2
                             threads_settings[unit]['adj_2'] = threads_settings[unit]['adj_1']
-                    self.update_graph_status = 0
                     await interaction.response.send_message(
                         'new mode for unit {} is {}'.format(unit_arg, mode_arg))
             return None
@@ -1287,7 +1327,6 @@ class Bot2b3(NextcordBot):
                 if len(txt) == 0:
                     await interaction.response.send_message('There are no channel with this usage')
                 else:
-                    self.update_graph_status = 0
                     await interaction.response.send_message("\n".join(txt))
                 return None
 
@@ -1318,7 +1357,6 @@ class Bot2b3(NextcordBot):
             if len(txt) == 0:
                 await interaction.response.send_message('There are no channel with this usage')
             else:
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1375,7 +1413,6 @@ class Bot2b3(NextcordBot):
                                 new_val))
                             threads_settings[unit]['updated'] = True
                             threads_settings[unit][ch_name] = new_val
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1427,7 +1464,6 @@ class Bot2b3(NextcordBot):
                 if len(txt) == 0:
                     await interaction.response.send_message('There are no channel with this usage')
                 else:
-                    self.update_graph_status = 0
                     await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1471,7 +1507,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['power_bias'] = new_setting_val
                 await interaction.response.send_message(
                     'new power setting for unit {} is {}'.format(unit_arg, unit_setting))
-                self.update_graph_status = 0
             return None
 
         @bot_unit_set.subcommand(description='Change advanced timer setting')
@@ -1498,7 +1533,6 @@ class Bot2b3(NextcordBot):
                         threads_settings[unit]['adj_3'] = new_setting_val
                     elif new_setting_type == 'W':
                         threads_settings[unit]['adj_4'] = new_setting_val
-                self.update_graph_status = 0
                 await interaction.response.send_message('new timer setting for unit {} is {}'
                                                         .format(unit_arg, unit_setting))
             return None
@@ -1559,7 +1593,6 @@ class Bot2b3(NextcordBot):
                     # reset to adj_1 for modes without adj_2
                     if MODE_2B[threads_settings[unit]['mode']]['adj_2'] == '':
                         threads_settings[unit]['adj_2_max'] = threads_settings[unit]['adj_1_max']
-                self.update_graph_status = 0
                 await interaction.response.send_message("\n".join(txt))
             return None
 
@@ -1573,78 +1606,6 @@ class Bot2b3(NextcordBot):
         )
         async def list(interaction: Interaction) -> None:
             await interaction.response.send_message(embed=EmbedEventList(EVENT_ACTION))
-
-        # ----- SENSORS --------
-        @self.slash_command(name='sensors')
-        async def bot_sensors(interaction: nextcord.Interaction):
-            pass
-
-        @bot_sensors.subcommand(description='Display sensors configuration')
-        async def display(
-            interaction: Interaction
-        ) -> None:
-            await interaction.response.send_message(embed=EmbedSensorConfiguration(sensors_settings))
-            return None
-
-        @bot_sensors.subcommand(description='Activate sensor alarm')
-        async def alarm(interaction: Interaction,
-                        arg_sensor: str = SlashOption(name="sensor",
-                                                      description="type of sensor measurement",
-                                                      required=True,
-                                                      choices=['motion1',
-                                                               'motion2',
-                                                               'sound']),
-                        arg_enable: int = SlashOption(name="status",
-                                                      description="Activate sensor alarm",
-                                                      choices={'enable': 1, 'disable': 0},
-                                                      required=True),
-                        arg_delay: int = SlashOption(name="delay",
-                                                     description="Delay before doing the change",
-                                                     default=0,
-                                                     min_value=0,
-                                                     max_value=60,
-                                                     required=False)
-                        ) -> None:
-            if await check_permission(interaction, 'administrator'):
-                if arg_delay > 0:
-                    await interaction.response.send_message(
-                        'Sensor {} alarm wil be set in {} sec'.format(arg_sensor, arg_delay))
-                    await asyncio.sleep(arg_delay)
-                else:
-                    await interaction.response.send_message('Sensor {} alarm is set'.format(arg_sensor))
-                sensors_settings[arg_sensor]['alarm_enable'] = bool(arg_enable)
-            return None
-
-        @bot_sensors.subcommand(description='Adjust sensors configuration')
-        async def set(interaction: Interaction,
-                      arg_mode: str = SlashOption(name="setting",
-                                                  description="setting choice",
-                                                  required=True,
-                                                  choices={'level': 'level', 'on': 'on', 'off': 'off'},
-                                                  ),
-                      arg_type: str = SlashOption(name="type",
-                                                  description="sensor measurement",
-                                                  required=True,
-                                                  choices={'position1': 'motion1,position',
-                                                           'position2': 'motion2,position',
-                                                           'move1': 'motion1,move',
-                                                           'move2': 'motion2,move',
-                                                           'sound': 'sound,sound'}),
-                      arg_level: int = SlashOption(name="value",
-                                                   description="trigger level",
-                                                   min_value=1, max_value=50,
-                                                   required=True)
-                      ) -> None:
-            if await check_permission(interaction, 'administrator'):
-                sensor = arg_type.split(',')
-                if arg_mode == 'level':
-                    if await self.check_sensor_level(interaction, arg_level) > 0:
-                        sensors_settings[sensor[0]][sensor[1] + '_alarm_level'] = arg_level
-                        await interaction.response.send_message('New level is set')
-                elif await self.check_sensor_duration(interaction, arg_level) > 0:
-                    sensors_settings[sensor[0]][sensor[1] + '_delay_' + arg_mode] = arg_level
-                    await interaction.response.send_message('New duration is set')
-            return None
 
         # ----- EMERGENCY STOP ----------
         @self.slash_command(
@@ -1661,7 +1622,6 @@ class Bot2b3(NextcordBot):
                             threads_settings[unit][ch] = 0
                             threads_settings[unit][ch + '_max'] = 0
                     await interaction.response.send_message('stop all channels')
-                    self.update_graph_status = 0
             return None
 
         # ----- RAMP COMMANDS ------
@@ -1706,7 +1666,6 @@ class Bot2b3(NextcordBot):
                     if ramp_prct_arg < 100:
                         threads_settings[unit][target_arg + '_ramp_phase'] = phase_arg
                         threads_settings[unit][target_arg + '_ramp_prct'] = ramp_prct_arg
-                self.update_graph_status = 0
                 await interaction.response.send_message("Software ramp adjusted")
             return None
 
@@ -1778,6 +1737,16 @@ class Bot2b3(NextcordBot):
         
         Logger.info(f"Action received! {type_action}")
         # action parsed in the event
+        
+        await store.websocket.broadcast({
+            "type": "event-trigger",
+            "payload": {
+                "type_action": type_action,
+                "origin_action": origin_action,
+                "event_time": event_time,
+            }
+        })
+            
 
         m = re.search('^wof_([A-Z])([A-Z,a-z])([A-Z,a-z])$', type_action)
         if m:
@@ -1930,7 +1899,7 @@ class Bot2b3(NextcordBot):
         """
         # pprint(action)
         # pprint(threads_settings)
-        Logger.info("{} action start".format(action['origine']))
+        Logger.info("{} action start\n".format(action['origine']))
         # Level update
         if action['type'] == 'lvl':
             for unit in await self.check_unit(None, action['unit']):
@@ -1951,8 +1920,18 @@ class Bot2b3(NextcordBot):
                     })
                     Logger.info("[Action] level for {} {} -> {}".format(threads_settings[unit][f'ch_{ch}_use'], old_val, new_val))
                     
+                    await store.websocket.broadcast({
+                        "type": "level-update",
+                        "payload": {
+                            "electrode_name": threads_settings[unit][f'ch_{ch}_use'],
+                            "type": action['type'],
+                            "unit": unit,
+                            "channel": ch_name,
+                            "level_old": old_val,
+                            "level_new": new_val,
+                        }
+                    })
                     
-            self.update_graph_status = 0
         # profile update
         elif action['type'] == 'pro':
             if action['profile'] == 'X':
@@ -1990,8 +1969,6 @@ class Bot2b3(NextcordBot):
                             else:
                                 threads_settings[bck_bt_name][field] = bck_settings[bck_bt_name][field]
 
-        self.update_graph_status = 0
-
     # BT sensors polling for new alarm
     async def bt_sensor_alarm(self):
         """
@@ -2003,19 +1980,23 @@ class Bot2b3(NextcordBot):
 
         """
         # loop by sensor
-        for sensor in sorted(sensors_settings.keys()):
+        for sensor_name in sorted(store.get_all_sensors_settings().keys()):
+            current_sensor_settings = store.get_sensor_setting(sensor_name)
+            
             # loop by value from the sensor
-            for field in sorted(sensors_settings[sensor].keys()):
+            for field in sorted(current_sensor_settings.keys()):
                 # find the name of the sensor from the config
                 if m := re.match(r"^(\w+)_alarm_number$", field):
                     value = m[1]
                     # check if the alarm counter have changed
-                    if sensors_settings[sensor][value + '_alarm_number'] != sensors_settings[sensor][value + '_alarm_number_action']:
-                        sensors_settings[sensor][value + '_alarm_number_action'] = sensors_settings[sensor][value + '_alarm_number']
+                    if current_sensor_settings[value + '_alarm_number'] != current_sensor_settings[value + '_alarm_number_action']:
+                        current_sensor_settings[value + '_alarm_number_action'] = current_sensor_settings[value + '_alarm_number']
+                        store.update_sensor_field(sensor_name, value + "_alarm_number_action", current_sensor_settings[value + '_alarm_number'])
+                        
                         # if alarm is active, add event in queue
-                        if EVENT_ACTION[value] and sensors_settings[sensor]['alarm_enable']:
-                            Logger.warning(f'[Sensor] Alarm! "{sensor}" Sensor fired!')
-                            await self.add_event_action(value, sensor + ' BT sensor ' + value + str(sensors_settings[sensor][value + '_alarm_number_action']), time.localtime())
+                        if EVENT_ACTION[value] and current_sensor_settings['alarm_enable']:
+                            Logger.warning(f'[Sensor] Alarm! "{sensor_name}" Sensor fired!')
+                            await self.add_event_action(value, sensor_name + ' BT sensor ' + value + str(current_sensor_settings[value + '_alarm_number_action']), time.localtime())
 
     # for exception in tasks bt_sensor_alarm
     @tasks.loop(seconds=1)
@@ -2310,6 +2291,10 @@ class Bot2b3(NextcordBot):
         # print(f"chaster={self.chaster.linked}")
         # print(f"profile={self.profile.profileFiles}")
         
+        # create root and redirect host to it
+        magicLink: str = generate_root_access()
+        await self.get_user(CONFIGURATION['subjectDiscordId']).send(content=f"Magic Link: {magicLink}")
+        
         await self.chaster.linkLock()
         
         # Start all tasks
@@ -2327,291 +2312,7 @@ class Bot2b3(NextcordBot):
     async def on_command_error(self, context, exception):
         logger.error(str(exception))
 
-
-def build_status_pic():
-    """
-    build the pic with all gauges about units settings
-    Returns:
-
-    """
-
-    def unit_status_color(unit_name):
-        color = "green"
-        if not threads_settings[unit_name]['sync']:
-            color = "yellow"
-        if not threads_settings[unit_name]['cnx_ok']:
-            color = "red"
-        return color
-
-    def delta_display_type(unit_name, ch):
-        if threads_settings[unit_name][ch + '_ramp_prct'] < 100:
-            return "gauge+number+delta"
-        else:
-            return "gauge+number"
-
-    def sensor_color(sensor):
-        color = "red"
-        if sensors_settings[sensor]['sensor_online']:
-            if sensors_settings[sensor]['alarm_enable']:
-                color = "green"
-            else:
-                color = "gray"
-        return color
-
-    def delta_info(unit_name, ch):
-        delta_dict = {}
-        delta_dict['reference'] = int(
-            threads_settings[unit_name][ch] + threads_settings[unit_name][ch + '_max'] *
-            threads_settings[unit_name][ch + '_ramp_prct'] / 100
-        )
-        if threads_settings[unit_name][ch + '_ramp_prct'] < 100:
-            delta_dict['decreasing'] = {'color': 'green'}
-        return delta_dict
-
-    def unit_level_txt(unit_name):
-        if threads_settings[unit_name]['level_d']:
-            level_txt = CHECK_ARG['POWER_BIAS'][threads_settings[unit_name]['power_bias']]
-        elif threads_settings[unit_name]['level_h']:
-            level_txt = 'H'
-        else:
-            level_txt = 'L'
-        level_txt = level_txt + chr(threads_settings[unit_name]['level_map'] + ord('a'))
-        return level_txt
-
-    Logger.info('Building Status Picture..')
-    indicators = []  # array of all graphs
-    for unit_name in BT_UNITS:
-        # --- Unit info
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int(unit_name[-1]),
-            title={"text": "{mode}".format(mode=MODE_2B[threads_settings[unit_name]['mode']]['id']),
-                   "font": {"size": 10}},
-            number={'suffix': unit_level_txt(unit_name), "font": {"color": unit_status_color(unit_name)}})
-        )
-        # -- Channel Info
-        for ch in ('ch_A', 'ch_B'):
-            # Level
-            usage = threads_settings[unit_name][ch + '_use']
-            indicators.append(go.Indicator(
-                mode=delta_display_type(unit_name, ch),
-                value=threads_settings[unit_name][ch],
-                title={'text': ch[-1] + ':' + threads_settings[unit_name][ch + '_use'], "font": {"size": 11}},
-                delta=delta_info(unit_name, ch),
-                gauge={
-                    'axis': {'range': [0, 100], 'visible': False},
-                    'bar': {'color': 'black'},
-                    'steps': [
-                        {'range': [0, USAGE_LIMIT[usage]['start']],
-                         'color': "lightgray"},
-                        {'range': [USAGE_LIMIT[usage]['start'],
-                                   USAGE_LIMIT[usage]['warn']], 'color': "lightgreen"},
-                        {'range': [USAGE_LIMIT[usage]['warn'],
-                                   USAGE_LIMIT[usage]['max']], 'color': "yellow"},
-                        {'range': [USAGE_LIMIT[usage]['max'], 100], 'color': "red"}],
-                    'threshold': {
-                        'line': {'color': "black", 'width': 2},
-                        'thickness': 0.55,
-                        'value': threads_settings[unit_name][ch + '_max']}
-                }
-            ))
-        # -- Adjuts info
-        for ch in ('adj_1', 'adj_2'):
-            indicators.append(
-                go.Indicator(mode=delta_display_type(unit_name, ch), value=threads_settings[unit_name][ch],
-                             title={'text': MODE_2B[threads_settings[unit_name]['mode']][ch],
-                                    "font": {"size": 11}},
-                             delta=delta_info(unit_name, ch),
-                             gauge={
-                                 'axis': {'range': [0, 100], 'visible': False},
-                                 'bar': {'color': 'black'},
-                                 'steps': [
-                                     {'range': [0, 100], 'color': "lightgray"}
-                                 ],
-                                 'threshold': {
-                                     'line': {'color': "black", 'width': 2},
-                                     'thickness': 0.75,
-                                     'value': threads_settings[unit_name][ch + '_max']}
-                             }))
-        # -- multiplier Info
-        for ch in ('ch_A', 'ch_B'):
-            # Multiplier
-            # -- 2B Ramp speed
-            indicators.append(go.Indicator(
-                mode="number",
-                value=int(threads_settings[unit_name][ch + '_multiplier']),
-                title={"text": "multi<br>" + ch, "font": {"size": 9}},
-                number={'suffix': "%", "font": {"size": 10}}
-            )
-            )
-        # --- Ramp duration
-        if threads_settings[unit_name]['ramp_time'] == 0:
-            ramp_mode = 'disable'
-        else:
-            if threads_settings[unit_name]['ramp_wave']:
-                ramp_mode = 'Wave'
-            else:
-                ramp_mode = 'Ramp'
-        indicators.append(go.Indicator(
-            mode="number",
-            value=threads_settings[unit_name]['ramp_time'],
-            title={"text": "cycle<br>{}".format(ramp_mode),
-                   "font": {"size": 10}},
-            number={'suffix': 's', "font": {"size": 9}})
-        )
-        # -- 2B Ramp speed
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int((CHECK_ARG['RAMP_SPEED'][threads_settings[unit_name]['adj_3']])[1:]),
-            title={"text": "2B ramp<br>speed", "font": {"size": 9}},
-            number={'prefix': "x", "font": {"size": 14}}
-        )
-        )
-        # -- Wrap time factor
-        indicators.append(go.Indicator(
-            mode="number",
-            value=int((CHECK_ARG['WRAP_FACTOR'][threads_settings[unit_name]['adj_4']])[1:]),
-            title={"text": "wrap<br>timer", "font": {"size": 9}},
-            number={'prefix': "x", "font": {"size": 14}}
-        )
-        )
-
-    # Empty
-    indicators.append(None)
-    # Motion sensors value
-    for sensor in ('motion1', 'motion2'):
-        for ch in ('position', 'move'):
-            indicators.append(go.Indicator(
-                mode="gauge+number",
-                value=sensors_settings[sensor]['current_' + ch],
-                title={'text': ch + sensor[-1], "font": {"size": 11, "color": sensor_color(sensor)}},
-                gauge={  #
-                    'axis': {'range': [0, 50], 'visible': False},
-                    'bar': {'color': 'black'},
-                    'steps': [
-                        {'range': [0, sensors_settings[sensor][ch + '_alarm_level']], 'color': "lightgray"},
-                        {'range': [sensors_settings[sensor][ch + '_alarm_level'], 50], 'color': "red"}]
-                }
-            ))
-
-    # sound sensors
-    indicators.append(go.Indicator(
-        mode="gauge+number",
-        value=sensors_settings['sound']['current_sound'],
-        title={'text': 'sound', "font": {"size": 11, "color": sensor_color('sound')}},
-        gauge={  #
-            'axis': {'range': [0, 50], 'visible': False},
-            'bar': {'color': 'black'},
-            'steps': [
-                {'range': [0, sensors_settings['sound']['sound_alarm_level']], 'color': "lightgray"},
-                {'range': [sensors_settings['sound']['sound_alarm_level'], 50], 'color': "red"}]
-        }))
-
-    # Empty
-    indicators.append(None)
-    # queue done
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['done'],
-        title={"text": "done", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-    # queue size
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['waiting'],
-        title={"text": "queued", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-    # running size
-    indicators.append(go.Indicator(
-        mode="number",
-        value=queue_stats['running'],
-        title={"text": "run", "font": {"size": 9}},
-        number={"font": {"size": 14}}))
-
-    Logger.info('Creating Pic')
-    # pprint(indicators)
-    # ---build pic
-    fig = make_subplots(
-        rows=4,
-        cols=10,
-        column_widths=[0.10, 0.2, 0.2, 0.2, 0.2, 0.08, 0.08, 0.08, 0.08, 0.08],
-        specs=[
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [{'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'}],
-            [None, {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator'}, {'type': 'indicator'},
-             {'type': 'indicator', "colspan": 2}, None,
-             {'type': 'indicator'}, {'type': 'indicator'}, {'type': 'indicator'}]]
-    )
-    for x in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10):
-        for y in (1, 2, 3, 4):
-            if indicators[(y - 1) * 10 + x - 1]:
-                fig.add_trace(indicators[(y - 1) * 10 + x - 1], row=y, col=x)
-                
-    fig['layout'].update(
-        width=500,
-        height=300,
-        showlegend=False,
-        margin=dict(l=5, r=5, t=10, b=5),
-    )
-    
-    Logger.info('Writing Pic')
-    
-    try:
-        fig.write_image('status.jpeg')
-    except Exception as err:
-        print(err)
-    Logger.info('Writed Pic')
-    
-
-
-def thread_push_status_pic():
-    """
-    Update the status in bot status and publish graph with all settings
-    Returns:
-
-    """
-    update_graph_status = 10
-    last_id = None
-    while True:
-        try:
-            time.sleep(0.5)
-            if update_graph_status < 1:
-                # new pic status
-                build_status_pic()
-                # remove previous
-                if last_id:
-                    webhook = DiscordWebhook(url=DISCORD_STATUS_WEBHOOKS, rate_limit_retry=True, username="bot status", id=last_id)
-                    webhook.delete()
-                # upload
-                webhook = DiscordWebhook(url=DISCORD_STATUS_WEBHOOKS, rate_limit_retry=True, username="bot status")
-                with open(STATUS_IMG_FILE, "rb") as f:
-                    webhook.add_file(file=f.read(), filename=f'status.jpg')
-                webhook.execute()
-                last_id = webhook.id
-                update_graph_status = 20  # minimal refresh
-            else:
-                update_graph_status = update_graph_status - 1
-        except Exception as err:
-            Logger.info(f"Thread error in push_status_pic {err=}, {type(err)=}")
-            print(err)
-            time.sleep(30)
-
-
-def sensor_check_val(sensor: str, measure: str, val: int) -> None:
+def sensor_check_val(sensor_name: str, measure: str, val: int) -> None:
     """
     Check if the sensor can fire an alarm
     Args:
@@ -2622,27 +2323,43 @@ def sensor_check_val(sensor: str, measure: str, val: int) -> None:
     Returns:
 
     """
-
-    # max value at 50
-    sensors_settings[sensor]['current_' + measure] = min(round(val), 50)
+    # fetch current settings
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    
+    # max value at 50 (why?)
+    if sensor_name == "sound":
+        new_current_value = min(round(val), 90)
+    else:
+        new_current_value = min(round(val), 50)
 
     # no check if offline
-    if not sensors_settings[sensor]['sensor_online']:
+    if not current_sensor_settings['sensor_online']:
         return
+    
+    fields_to_update = {
+        'current_' + measure: new_current_value
+    }
+    
+    new_counter = current_sensor_settings[measure + '_alarm_counter']
 
-    # trigger something or if in recovery
-    if val > sensors_settings[sensor][measure + '_alarm_level'] or sensors_settings[sensor][measure + '_alarm_counter'] < 0:
-        sensors_settings[sensor][measure + '_alarm_counter'] = sensors_settings[sensor][measure + '_alarm_counter'] + 1
+    # value is superior to alarm level
+    if val > current_sensor_settings[measure + '_alarm_level'] or current_sensor_settings[measure + '_alarm_counter'] < 0:
+        current_sensor_settings[measure + '_alarm_counter'] = current_sensor_settings[measure + '_alarm_counter'] + 1
 
+        new_counter = new_counter + 1
+        fields_to_update[measure + '_alarm_counter'] = new_counter
+        
     # consecutive detect and activate delay_off
-    if sensors_settings[sensor][measure + '_alarm_counter'] >= sensors_settings[sensor][measure + '_delay_on']:
+    if new_counter >= current_sensor_settings[measure + '_delay_on']:
         # alarm
-        sensors_settings[sensor][measure + '_alarm_number'] = sensors_settings[sensor][measure + '_alarm_number'] + 1
+        fields_to_update[measure + '_alarm_number'] = current_sensor_settings[measure + '_alarm_number'] + 1
         # add delay before the next alarm
-        sensors_settings[sensor][measure + '_alarm_counter'] = -sensors_settings[sensor][measure + '_delay_off']
+        fields_to_update[measure + '_alarm_counter'] = -current_sensor_settings[measure + '_delay_off']
+
+    store.update_sensor_fields(sensor_name, fields_to_update)
 
 
-def sensor_notification(sensor, _, data: bytearray) -> None:
+def sensor_notification(sensor_name, _, data: bytearray) -> None:
     """
     Function call for every BT notify
     Args:
@@ -2653,9 +2370,12 @@ def sensor_notification(sensor, _, data: bytearray) -> None:
     Returns:
 
     """
-    if sensor == 'sound':
+    
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    
+    if sensor_name == 'sound':
         level = int.from_bytes(data[0:1], byteorder='big', signed=False)
-        sensor_check_val(sensor, 'sound', level)
+        sensor_check_val(sensor_name, 'sound', level)
     else:
         # X/Y/Z position (not sure about the unit)
         x_angle = int.from_bytes(data[0:2], byteorder='big', signed=True)
@@ -2671,19 +2391,26 @@ def sensor_notification(sensor, _, data: bytearray) -> None:
 
         # Calc something proportional to the position change
         pos = (abs(x_angle) + abs(y_angle) + abs(z_angle)) / 100
-        if sensors_settings[sensor]['position_ref'] == -1:
-            sensors_settings[sensor]['position_ref'] = pos
+        
+        # new position
+        new_position_ref: int = pos
+        
+        if current_sensor_settings['position_ref'] == -1:
+            new_position_ref = pos
         else:
-            sensors_settings[sensor]['position_ref'] = \
-                (sensors_settings[sensor]['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
-        pos = abs(pos - sensors_settings[sensor]['position_ref'])
+            new_position_ref = (current_sensor_settings['position_ref'] * 100 + pos) / 101  # Add 1% of the new position
+        
+        # update sensor    
+        store.update_sensor_field(sensor_name, "position_ref", new_position_ref)
+        
+        pos = abs(pos - new_position_ref)
 
         # check values
-        sensor_check_val(sensor, 'position', pos)
-        sensor_check_val(sensor, 'move', move)
+        sensor_check_val(sensor_name, 'position', pos)
+        sensor_check_val(sensor_name, 'move', move)
 
 
-async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
+async def sensor_bt(sensor_name: str, address: str, char_uuid: str) -> None:
     """
     Start connexion with the BT ensors and activate notification
     Args:
@@ -2693,28 +2420,61 @@ async def sensor_bt(sensor: str, address: str, char_uuid: str) -> None:
     Returns:
         None
     """
-    sensors_settings[sensor]['sensor_online'] = False
+    
+    current_sensor_settings = store.get_sensor_setting(sensor_name)
+    current_sensor_settings['sensor_online'] = False
+    
     disconnected_event = asyncio.Event()
-    Logger.info(f"[Sensors] Searching sensor '{sensor}'...")
+    Logger.info(f"[Sensors] Searching sensor '{sensor_name}'...")
 
     def disconnected_callback(bt_client):
-        Logger.info(f"[Sensors] {sensor} sensor is disconnected")
-        sensors_settings[sensor]['sensor_online'] = False
+        Logger.info(f"[Sensors] {sensor_name} sensor is disconnected")
+        current_sensor_settings['sensor_online'] = False
         
-        if sensor == 'sound':
-            sensor_check_val(sensor, 'sound', 0)
+        if sensor_name == 'sound':
+            sensor_check_val(sensor_name, 'sound', 0)
         else:
-            sensor_check_val(sensor, 'move', 0)
-            sensor_check_val(sensor, 'position', 0)
+            sensor_check_val(sensor_name, 'move', 0)
+            sensor_check_val(sensor_name, 'position', 0)
             
-        disconnected_event.set()
+        # get current loop and queue ws update
+        loop = asyncio.get_event_loop()
+        asyncio.run_coroutine_threadsafe(
+            store.websocket.broadcast({
+                "type": "sensors:update",
+                "payload": {
+                    "id": sensor_name,
+                    "changes": {
+                        "sensor_online": False
+                    }
+                },
+            }),
+            loop
+        )
+            
+        disconnected_event.set()    
 
     async with BleakClient(address, disconnected_callback=disconnected_callback) as client:
-        Logger.info(f"[Sensors] {sensor} sensor is connected")
-        sensors_settings[sensor]['sensor_online'] = True
-        await client.start_notify(char_uuid, partial(sensor_notification, sensor))
+        Logger.info(f"[Sensors] {sensor_name} sensor is connected")
+        current_sensor_settings['sensor_online'] = True
+        
+        # get current loop and queue ws update
+        loop = asyncio.get_event_loop()
+        asyncio.run_coroutine_threadsafe(
+            store.websocket.broadcast({
+                "type": "sensors:update",
+                "payload": {
+                    "id": sensor_name,
+                    "changes": {
+                        "sensor_online": True
+                    }
+                },
+            }),
+            loop
+        )
+        
+        await client.start_notify(char_uuid, partial(sensor_notification, sensor_name))
         await disconnected_event.wait()
-        # TODO: notify_here
 
 
 def thread_sensors_bt(sensor: str, addr: str, service: str) -> None:
@@ -2736,6 +2496,8 @@ def thread_sensors_bt(sensor: str, addr: str, service: str) -> None:
             # run
             loop.run_until_complete(sensor_bt(sensor, addr, service))
             loop.close()
+        except BleakDeviceNotFoundError:
+            time.sleep(30)
         except Exception as err:
             logger.info(f"Thread error in start_sensors_bt {sensor}: {err=}, {type(err)=}")
             time.sleep(30)
@@ -2807,49 +2569,6 @@ def thread_update_ramp():
         except Exception as err:
             Logger.info(f"Thread error in update_ramp {err=}, {type(err)=}")
             time.sleep(30)
-
-
-def sensors_init():
-    Logger.info(f"[Sensors] Initializating Sensors settings...")
-    # motion sensors init
-    sensors_settings['motion1'] = {
-        "sensor_type": "motion",
-        "sensor_online": False,  # true if the sensors is online
-        "position_ref": -1.0,  # position reference
-        "position_alarm_level": 45,  # threshold for position alarm action
-        "position_delay_on": 1,  # nb consecutive value for starting an action
-        "position_delay_off": 5,  # nb consecutive value before starting an action again
-        "move_alarm_level": 12,  # threshold for moving alarm action
-        "move_delay_on": 1,  # nb consecutive value for starting an action
-        "move_delay_off": 5,  # nb consecutive value before starting an action again
-        "position_alarm_counter": 0,  # Num of consecutive position alarm
-        "move_alarm_counter": 0,  # Num of consecutive move alarm
-        "position_alarm_number": 0,  # Number of the last alarm
-        "move_alarm_number": 0,  # Number of the last alarm
-        "position_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "move_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "current_position": 0,  # Current position value
-        "current_move": 0,  # Current move value
-        "alarm_enable": False  # alarm activation
-    }
-    sensors_settings['motion2'] = sensors_settings['motion1'].copy()
-
-    # sound sensor init
-    sensors_settings['sound'] = {
-        "sensor_online": False,  # true if the sensors is online
-        "sensor_type": "sound",
-        "sound_alarm_level": 30,  # threshold for position alarm action
-        "sound_delay_on": 5,  # nb consecutive value for starting an action
-        "sound_delay_off": 10,  # nb consecutive value before starting an action again
-        "sound_alarm_counter": 0,  # Num of consecutive sound alarm
-        "sound_alarm_number": 0,  # Number of the last alarm
-        "sound_alarm_number_action": 0,  # Number of the last alarm who had generated an action
-        "current_sound": 0,  # Current sound value
-        "alarm_enable": False  # alarm activation
-
-    }
-    
-    Logger.success(f"[Sensors] Successfully initialized {len(sensors_settings)} Sensors.")
     
 def mk2b_init():
     # Init 2B threads settings
@@ -2902,6 +2621,187 @@ def mk2b_init():
         }
         
     Logger.success(f"[UNITS] Initialized 2B initials settings for {len(BT_UNITS)} Units.")
+    
+bot = Bot2b3()
+
+# REST API
+def start_api():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+    
+@app.get("/")
+async def api_home():
+    return {
+        "version": "1.0.0",
+        "app": "Plune"
+    }
+    
+@app.get("/sensors")
+async def sensors():
+    return store.get_all_sensors_settings()
+
+@app.get("/units")
+async def units():    
+    return threads_settings
+    # return threads_settings
+
+@app.get("/update")
+async def upd():
+    # await bot.add_event_action(
+    #     'chaster_pillory_vote',
+    #     'pillory_chaster' + '_' + "lucie",
+    #     time.localtime()
+    # )
+    await store.websocket.broadcast({
+        "type": "sensor-notification",
+        "payload": ['sensor 1 updated']
+    })
+    
+    return {"success": "OK"}
+
+# WebSocket API
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    user_id = None
+    
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        # role = payload.get("role")
+        
+        # connect User to WebSocket
+        await store.websocket.connect(user_id, websocket)
+           
+        # Send initial connection message
+        await websocket.send_json({
+            "type": "connected",
+            "payload": {
+                "message": "WebSocket connected successfully",
+                "userId": user_id
+            }
+        })
+        
+        await websocket.send_json({
+            "type": "sensors:init",
+            "payload": store.get_all_sensors_settings()
+        })
+        
+        # Heartbeat and Message handling
+        while True:
+            try:
+                # Wait for messages from client with timeout
+                text = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=60
+                )
+                
+                message = json.loads(text)
+                if message.get("type") != "ping": 
+                    print(f"📨 Received: {json.dumps(message, indent=2)}")
+                
+                msg_id = message.get("id")
+                msg_type = message.get("type")
+                msg_payload = message.get("payload")
+
+                if msg_type == "ping":
+                    """
+                        reply to ping for keepalive
+                    """
+                    await websocket.send_json({"type": "pong"})
+                    continue
+                elif msg_type == "core:stop":
+                    """
+                        Emergency shutdown all units and queue
+                    """
+                    if store.check_permission(user_id, Permission.WRITE_UNITS):
+                        bot.queueRunning = False
+                        for unit in BT_UNITS:
+                            for ch in ('ch_A', 'ch_B'):
+                                threads_settings[unit]['updated'] = True
+                                threads_settings[unit][ch] = 0
+                                threads_settings[unit][ch + '_max'] = 0
+                                
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "ok"},
+                            "id": msg_id
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "error", "message": "Missing permission: WRITE_UNITS"},
+                            "id": msg_id
+                        })
+                elif msg_type == "sensors:update":
+                    """
+                        Update one or more Sensors
+                    """
+                    if store.check_permission(user_id, Permission.WRITE_SENSORS):
+                        # loop over sensors then fields
+                        for sensorName, value in msg_payload.items():
+                            store.update_sensor_fields(sensorName, value)
+
+                        # reply with ok
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "ok"},
+                            "id": msg_id
+                        })
+                    else:
+                        await websocket.send_json({
+                            "type": "command",
+                            "payload": {"status": "error", "message": "Missing permission: WRITE_SENSORS"},
+                            "id": msg_id
+                        })
+                # Handle client messages (e.g., commands)
+                elif msg_type == "get:notifications":
+                    print(f"🔔 Get notifications - ID: {msg_id}")
+                    
+                    # Récupérer les notifications
+                    notifications = [
+                        {"id": 1, "message": "Test notification 1"},
+                        {"id": 2, "message": "Test notification 2"}
+                    ]
+                    
+                    # IMPORTANT : Renvoyer avec l'ID
+                    response = {
+                        "type": "get:notifications",
+                        "payload": notifications,
+                        "id": msg_id  # ← CRUCIAL
+                    }
+                    
+                    print(f"📤 Sending: {json.dumps(response)}")
+                    await websocket.send_json(response)
+                else:
+                    """
+                        Message not supported
+                    """
+                    print(f"⚠️ Unknown message type: {msg_type}")
+                    # if data.get("type") == "command":
+                    #     pprint(data)
+                    #     # command = DeviceCommand(**data.get("data"))
+                    #     # await device_store.websocket.send_command(command)
+                
+            except asyncio.TimeoutError:
+                print("💓 Sending heartbeat ping")
+                await websocket.send_json({"type": "ping"})
+                continue 
+
+    except jwt.PyJWTError as e:
+        print(f"❌ JWT error: {e}")
+        await websocket.close(code=4001, reason="Invalid token")
+        
+    except WebSocketDisconnect:
+        print(f"🔴 Client disconnected: {user_id}")
+        
+    except Exception as e:
+        print(f"❌ WebSocket error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+    finally:
+        if user_id:
+            store.websocket.disconnect(user_id)
+# bot
 
 if __name__ == '__main__':
     
@@ -2914,7 +2814,6 @@ if __name__ == '__main__':
     profile.loadProfiles()
     
     # init thread for BT sensors
-    sensors_init()
     if ENABLE_BT_SENSORS:
         for name, addr, service in BT_SENSORS:
             threads[name] = Thread(target=thread_sensors_bt, args=(name, addr, service))
@@ -2928,8 +2827,8 @@ if __name__ == '__main__':
     # init threads for software ramp
     threads['ramp'] = Thread(target=thread_update_ramp)
 
-    # status pic
-    # threads['status_pic'] = Thread(target=thread_push_status_pic)
+    # api
+    threads['api'] = Thread(target=start_api)
 
     # start all thread
     for tr in threads.keys():
@@ -2940,11 +2839,7 @@ if __name__ == '__main__':
     # start Discord Bot
     while True:
         try:
-            Logger.info("[Discord] Starting Discord Bot...")
-
-            bot = Bot2b3(
-                profile
-            )
+            Logger.info("[Discord] Loading Discord cogs...")
             
             # Try to load all the cogs
             for cog in get_cogs():
@@ -2956,9 +2851,10 @@ if __name__ == '__main__':
                     Logger.error(e)
                     print(e)
             
+            Logger.info("[Discord] Starting Discord Bot...")
             bot.run(DISCORD_TOKEN)
             
         except Exception as err:
             Logger.error(f'Restarting Discord bot after major error {err}')
-            time.sleep(10)
+            time.sleep(1000)
             continue

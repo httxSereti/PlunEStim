@@ -7,13 +7,14 @@ from nextcord.ext.commands import Cog
 from views import *
 
 PAGES_AVAILABLE = {
-    'Intro [Page 1]': 0,
+    'Introduction [Page 1]': 0,
     'Estim infos [Page 2]': 1,
     'Configuration [Page 3]': 2,
     'Units Settings [Page 4]': 3,
     'Events & Trigger Rules [Page 5]': 4,
     'Programs [Page 6]': 5,
     'Profile [Page 7]': 6,
+    'Sensors [Page 8]': 7,
 }
 
 class GuideCommand(Cog):
@@ -22,14 +23,14 @@ class GuideCommand(Cog):
         self.bot = bot
 
     @slash_command(
-        description="Learn about PlunEStim, features, how to use, tips & tricks.."
+        description="The guide about PlunEStim Companion"
     )
     async def guide(
         self,
         interaction: Interaction,
         page: int = SlashOption(
             name="page",
-            description="The guide page you want to view.",
+            description="The page you want to view.",
             required=False,
             choices=PAGES_AVAILABLE
         )
@@ -60,9 +61,6 @@ class GuideCommand(Cog):
                     "- Noises Sensor Integration (too much noises will triggers **Events**)",
                     "- Motion Sensor Integration (movements, position, leave area will triggers **Events**)",
                 ]),
-                #     \r- Notify Subject for stimulations incoming using Sounds
-                #     \r- Prevent Subject to make too much noises using Punishments
-                #     \r- Prevent Subject to move or escape an area using Punishments
                 color=nextcord.Color.purple()
             ),
             Embed(
@@ -108,6 +106,22 @@ class GuideCommand(Cog):
             Embed(
                 title=":sparkles: Profile",
                 description="7"
+            ),
+            Embed(
+                title=":sparkles: Sensors",
+                description="\n".join([
+                    "### **Sensors**",
+                    "*Your eyes and ears, detect sounds, movements and position of Subject in real time*",
+                    "# :sparkles: Commands",
+                    "- /sensors display",
+                    "-# Display Sensors configurations and status.",
+                    "_ _",
+                    "- /sensors alarm [sensorName] [enable|disable] (delay)",
+                    "-# Enable or disable Alarm of a desired Sensor with delay or now.",
+                    "_ _",
+                    "- /sensors set [settingName] [sensorName] [value]",
+                    "-# Update configuration of a desired Sensor; trigger level, delay to fire, cooldown to fire",
+                ]),
             ),
         ]
         

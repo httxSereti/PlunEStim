@@ -191,7 +191,7 @@ class Chaster():
                         if event['type'] == "wheel_of_fortune_turned" and event['payload']['segment']['type'] == "text":
                             textPayload = event['payload']['segment']['text']
                             
-                            matcher = re.search('^₊✩‧₊˚(\\d|[A-Z][A-Z,a-z][A-Z,a-z])✩', textPayload)
+                            matcher = re.search('^(\\d|[A-Z][A-Z,a-z][A-Z,a-z]):', textPayload)
                             
                             if matcher:
                                 payload = matcher.group(1)
