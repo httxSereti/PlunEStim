@@ -36,6 +36,7 @@ import serial.tools.list_ports  # type: ignore
 
 
 from bleak import BleakClient
+from bleak.exc import BleakDeviceNotFoundError
 from nextcord import Interaction, SlashOption
 from nextcord.ext.commands import Bot as NextcordBot
 from nextcord.ext import tasks
@@ -2495,6 +2496,8 @@ def thread_sensors_bt(sensor: str, addr: str, service: str) -> None:
             # run
             loop.run_until_complete(sensor_bt(sensor, addr, service))
             loop.close()
+        except BleakDeviceNotFoundError:
+            time.sleep(30)
         except Exception as err:
             logger.info(f"Thread error in start_sensors_bt {sensor}: {err=}, {type(err)=}")
             time.sleep(30)
