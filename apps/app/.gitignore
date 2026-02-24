@@ -1,7 +1,0 @@
-*.log
-log.txt
-config.env
-firmware-tools/
-**.pyc
-resources/sounds/*.wav
-userdata/*
